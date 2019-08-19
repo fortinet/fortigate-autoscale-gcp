@@ -1,0 +1,44 @@
+{
+  "name": "fortigate-autoscale-gcp",
+  "version": "1.0.0",
+  "description": "FortiGate Autoscale Google Cloud Platform",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "files_to_deploy": [
+    "*.js",
+    "package.json"
+  ],
+  "dependencies": {
+    "@google-cloud/compute": "^1.1.2",
+    "@google-cloud/firestore": "^2.2.6",
+    "@google-cloud/storage": "^3.1.0",
+    "@types/mocha": "^5.2.7",
+    "fortigate-autoscale-core": "file:./core",
+    "tslint": "^5.18.0",
+    "uuid": "^3.3.2",
+    "xml2js": "^0.4.19"
+  },
+  "devDependencies": {
+    "eslint": "^5.4.0",
+    "eslint-plugin-mocha": "^5.2.0",
+    "ftnt-devops-ci": "github:guardhao104/ftnt-devops-ci",
+    "mocha": "^5.2.0",
+    "nyc": "^14.1.1"
+  },
+  "bundledDependencies": [
+    "fortigate-autoscale-core"
+  ],
+  "scripts": {
+    "pretest": "eslint --fix .",
+    "build": "scripts/make-dist.js",
+    "test": "nyc mocha --recursive './test/mocha/*.js'"
+  },
+  "author": "fortinet",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fortinet/fortigate-autoscale"
+  }
+}
