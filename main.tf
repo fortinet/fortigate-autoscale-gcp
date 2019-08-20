@@ -1,6 +1,6 @@
 provider "google" {
   credentials = "${file("account.json")}"
-  project     = ""
+  project     = "${var.project}"
   region      = "us-central1"
   zone        = "us-central1-c"
 }
@@ -38,15 +38,28 @@ resource "google_compute_instance" "vm_instance" {
   }
 }
 resource "google_compute_network" "vpc_network" {
-  name = "vpc-network"
+  name = "${var.cluster_name}-vpc-${random_string.random_name_post.result}"
+  auto_create_subnetworks = false
 }
+resource "google_compute_subnetwork" "public_subnet" {
+  name   = "${var.cluster_name}-public-subnet${random_string.random_name_post.result}"
+  region = "${var.region}"
+  network = "${google_compute_network.vpc_network.self_link}"
+  ip_cidr_range = "${var.public_subnet}"
+}
+resource "google_compute_subnetwork" "private_subnet" {
+  name   = "${var.cluster_name}-private-subnet${random_string.random_name_post.result}"
+  region = "${var.region}"
+  network = "${google_compute_network.vpc_network.self_link}"
+  ip_cidr_range = "${var.protected_subnet}"
+}
+
 
 # Instance Template
 resource "google_compute_instance_template" "default" {
   depends_on  = ["google_cloudfunctions_function.function"]
   name        = "jcripps-terraform-instance"
   description = "This template is used to create app server instances."
-  tags        = ["FortiGate", "AutoScale"]
 
   labels = {
     environment = "dev"
@@ -80,7 +93,7 @@ resource "google_compute_instance_template" "default" {
   }
 
   network_interface {
-    network = "default"
+    subnetwork = "${google_compute_subnetwork.public_subnet.self_link}"
     access_config {
       nat_ip = ""
     }
@@ -126,6 +139,25 @@ resource "google_compute_region_instance_group_manager" "appserver" {
   auto_healing_policies {
     health_check      = "${google_compute_health_check.autohealing.self_link}"
     initial_delay_sec = 300
+  }
+}
+### Regional AutoScaler ###
+resource "google_compute_region_autoscaler" "default" {
+  provider = "google-beta"
+  project = "${var.project}"
+  #Name needs to be in lowercase
+  name   = "${var.cluster_name}-autoscaler-${random_string.random_name_post.result}"
+  region = "${var.region}"
+  target = "${google_compute_region_instance_group_manager.appserver.self_link}"
+
+  autoscaling_policy {
+    max_replicas    = 4
+    min_replicas    = 2
+    cooldown_period = 60
+
+    cpu_utilization {
+      target = 0.5
+    }
   }
 }
 

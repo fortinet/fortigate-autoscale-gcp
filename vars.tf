@@ -1,6 +1,6 @@
 variable "region" {
     type = "string"
-    default = "us-central1" //Default Region
+    default = "us-central1" #Default Region
 }
 variable "project" {
   type = "string"
@@ -11,11 +11,11 @@ variable "vpc_cidr"{
     default = "172.16.0.0/16"
 }
 
-variable "vswitch_cidr_1"{
+variable "public_subnet"{
     type = "string"
     default = "172.16.0.0/21"
 }
-variable "vswitch_cidr_2"{
+variable "protected_subnet"{
     type = "string"
     default = "172.16.8.0/21"
 }
@@ -31,20 +31,18 @@ variable "scale_out_threshold"{
 }
 //Retrieves the current account for use with Function Compute
 
+#Must be lower-case for VPC
 variable "cluster_name"{
-    type = "string"
-    default = "FortigateAutoScale"
-}
-
-//OSS Bucket Name MUST be lowercase
-variable "bucket_name"{
     type = "string"
     default = "fortigateautoscale"
 }
 
-//Define the instance family to be used.
-//Different regions will contain various instance families
-//default family : ecs.sn2ne
+#Must be all lower case
+variable "bucket_name"{
+    type = "string"
+    default = "fortigateautoscale"
+}
+#Default n1-standard-1
 variable "instance" {
     type = "string"
     default = "n1-standard-1"
