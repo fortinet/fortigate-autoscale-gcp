@@ -11,7 +11,7 @@ resource "random_string" "psk" {
   special          = true
   override_special = ""
 }
-//Random 3 char string appended to the ened of each name to avoid conflicts
+#Random 5 char string appended to the ened of each name to avoid conflicts
 resource "random_string" "random_name_post" {
   length           = 5
   special          = true
@@ -19,51 +19,28 @@ resource "random_string" "random_name_post" {
   min_lower        = 5
 }
 
-resource "google_compute_instance" "vm_instance" {
-  name         = "jcripps-terraform-instance"
-  machine_type = "f1-micro"
-
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-9"
-    }
-  }
-
-  network_interface {
-    # A default network is created for all GCP projects
-    network = "default"
-    access_config {
-
-    }
-  }
-}
 resource "google_compute_network" "vpc_network" {
   name = "${var.cluster_name}-vpc-${random_string.random_name_post.result}"
   auto_create_subnetworks = false
 }
 resource "google_compute_subnetwork" "public_subnet" {
-  name   = "${var.cluster_name}-public-subnet${random_string.random_name_post.result}"
+  name   = "${var.cluster_name}-public-subnet-${random_string.random_name_post.result}"
   region = "${var.region}"
   network = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.public_subnet}"
 }
 resource "google_compute_subnetwork" "private_subnet" {
-  name   = "${var.cluster_name}-private-subnet${random_string.random_name_post.result}"
+  name   = "${var.cluster_name}-private-subnet-${random_string.random_name_post.result}"
   region = "${var.region}"
   network = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.protected_subnet}"
 }
-
 
 # Instance Template
 resource "google_compute_instance_template" "default" {
   depends_on  = ["google_cloudfunctions_function.function"]
   name        = "jcripps-terraform-instance"
   description = "This template is used to create app server instances."
-
-  labels = {
-    environment = "dev"
-  }
 
   instance_description = "description assigned to instances"
   machine_type         = "${var.instance}" //"n1-standard-1"
@@ -74,13 +51,9 @@ resource "google_compute_instance_template" "default" {
     on_host_maintenance = "MIGRATE"
   }
 
-  // Create a new boot disk from an image
-  //https://console.cloud.google.com/marketplace/details/centos-cloud/centos-6?filter=category:os&q=CentOS&id=a12ddfd2-8e61-4968-96d4-22a189c527c5
-  //https://console.cloud.google.com/marketplace/details/fortigcp-project-001/fortigate-payg?q=fortigate&id=68eae12e-f42e-452e-85bb-6939f3baa0f5
-  //https://console.cloud.google.com/marketplace/details/debian-cloud/debian-stretch?q=debian&id=02d02f87-14ba-4160-8d5e-7276f9491d0c
+  # Create a new boot disk from an image
   disk {
-    //source_image = "fortigcp-project-001/fortigate/fortigate-payg"
-    source_image = "projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license" //"fortigcp-project-001/fortigate/keithchoi-fgtondemand-621-20190723-001-w-license"
+    source_image = "projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license" #Default 6.2.1 PAYG
     auto_delete  = true
     boot         = true
   }
@@ -151,12 +124,12 @@ resource "google_compute_region_autoscaler" "default" {
   target = "${google_compute_region_instance_group_manager.appserver.self_link}"
 
   autoscaling_policy {
-    max_replicas    = 4
-    min_replicas    = 2
-    cooldown_period = 60
+    max_replicas    = "${var.max_replicas}"
+    min_replicas    = "${var.min_replicas}"
+    cooldown_period = "${var.cooldown_period}"
 
     cpu_utilization {
-      target = 0.5
+      target = "${var.cpu_utilization}"
     }
   }
 }
@@ -182,23 +155,55 @@ resource "google_cloudfunctions_function" "function" {
   description = "My function"
   runtime     = "nodejs10" //TODO: add as var
 
-  available_memory_mb   = 256
+  available_memory_mb   = 1024
   source_archive_bucket = "${google_storage_bucket.bucket.name}"
   source_archive_object = "${google_storage_bucket_object.archive.name}"
   trigger_http          = true
   timeout               = 500
   entry_point           = "main"
-  labels = {
-    my-label = "my-label-value"
-  }
 
   environment_variables = {
     PROJECT_ID            = "${var.project}" #Used by Bucket
-    FIRESTORE_DATABASE    = "${var.cluster_name}-${random_string.random_name_post.result}",
+    FIRESTORE_DATABASE    = "${var.cluster_name}-fortigateautoscale-${random_string.random_name_post.result}",
     ASSET_STORAGE_NAME    = "${google_storage_bucket.bucket.name}",
+    ASSET_STORAGE_KEY_PREFIX = "empty",
     FORTIGATE_PSK_SECRET  = "${random_string.psk.result}",
     FIRESTORE_INITIALIZED = "false",
     TRIGGER_URL           = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}"
+    RESOURCE_TAG_PREFIX   = "${var.cluster_name}"
+    PAYG_SCALING_GROUP_NAME = "${var.cluster_name}-${random_string.random_name_post.result}",
+    BYOL_SCALING_GROUP_NAME = "${var.cluster_name}-${random_string.random_name_post.result}",
+    MASTER_SCALING_GROUP_NAME = "${var.cluster_name}-${random_string.random_name_post.result}",
+    HEART_BEAT_LOSS_COUNT = 10,
+    SCRIPT_TIMEOUT = 500,
+    MASTER_ELECTION_TIMEOUT = 180,
+    REQUIRED_CONFIG_SET = "empty",
+    UNIQUE_ID = "empty",
+    CUSTOM_ID = "empty",
+    AUTOSCALE_HANDLER_URL = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}",
+    DEPLOYMENT_SETTINGS_SAVED = "true",
+    ENABLE_FORTIGATE_ELB = "false",
+    ENABLE_DYNAMIC_NAT_GATEWAY = "false",
+    ENABLE_HYBRID_LICENSING = "false",
+    ENABLE_INTERNAL_ELB = "false",
+    ENABLE_SECOND_NIC = "false",
+    ENABLE_VM_INFO_CACHE = "false",
+    FORTIGATE_ADMIN_PORT = 8443,
+    #FORTIGATE_AUTOSCALE_VPC_ID = "", #TODO: add instance group id
+    FORTIGATE_SYNC_INTERFACE = "port1",
+    MASTER_ELECTION_NO_WAIT = "true",
+    HEARTBEAT_INTERVAL = 25,
+    HEART_BEAT_DELAY_ALLOWANCE = 2,
+
+
+
+
+
+
+
+
+
+
   }
 }
 
@@ -282,4 +287,7 @@ output "Ip_Address" {
 }
 output "LoadBalance_instances" {
   value = "${google_compute_target_pool.default.instances}"
+}
+output "Notes" {
+  value = "The FireStore Database must be deleted seperately"
 }

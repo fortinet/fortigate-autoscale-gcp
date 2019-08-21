@@ -20,22 +20,33 @@ variable "protected_subnet"{
     default = "172.16.8.0/21"
 }
 
-//CPU threshold to scale in or out
-variable "scale_in_threshold"{
-    type = "string"
-    default = 35
+
+#CPU threshold to scale in or out
+variable "max_replicas"{
+    type = number
+    default = 4
 }
-variable "scale_out_threshold"{
-    type = "string"
-    default = 70
+variable "min_replicas"{
+    type = number
+    default = 2
 }
-//Retrieves the current account for use with Function Compute
+#Retrieves the current account for use with Function Compute
+variable "cooldown_period" {
+  type = number
+  default = 60
+}
+variable "cpu_utilization" {
+    type = number
+    default = 0.5 #Aggregated
+}
+
 
 #Must be lower-case for VPC
 variable "cluster_name"{
     type = "string"
     default = "fortigateautoscale"
 }
+
 
 #Must be all lower case
 variable "bucket_name"{
