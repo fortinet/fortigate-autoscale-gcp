@@ -4,46 +4,62 @@ provider "google" {
   region      = "us-central1"
   zone        = "us-central1-c"
 }
-
-
 resource "random_string" "psk" {
   length           = 16
   special          = true
   override_special = ""
 }
-#Random 5 char string appended to the ened of each name to avoid conflicts
+#Random 5 char string appended to the end of each name to avoid conflicts
 resource "random_string" "random_name_post" {
   length           = 5
   special          = true
   override_special = ""
   min_lower        = 5
 }
-
+### VPC ###
 resource "google_compute_network" "vpc_network" {
-  name = "${var.cluster_name}-vpc-${random_string.random_name_post.result}"
+  name                    = "${var.cluster_name}-vpc-${random_string.random_name_post.result}"
   auto_create_subnetworks = false
 }
 resource "google_compute_subnetwork" "public_subnet" {
-  name   = "${var.cluster_name}-public-subnet-${random_string.random_name_post.result}"
-  region = "${var.region}"
-  network = "${google_compute_network.vpc_network.self_link}"
+  name          = "${var.cluster_name}-public-subnet-${random_string.random_name_post.result}"
+  region        = "${var.region}"
+  network       = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.public_subnet}"
 }
 resource "google_compute_subnetwork" "private_subnet" {
-  name   = "${var.cluster_name}-private-subnet-${random_string.random_name_post.result}"
-  region = "${var.region}"
-  network = "${google_compute_network.vpc_network.self_link}"
+  name          = "${var.cluster_name}-private-subnet-${random_string.random_name_post.result}"
+  region        = "${var.region}"
+  network       = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.protected_subnet}"
 }
+### Firewall Policy ###
+#Default direction is ingress
+resource "google_compute_firewall" "firewall" {
+  name    = "${var.cluster_name}-firewall-${random_string.random_name_post.result}"
+  network = "${google_compute_network.vpc_network.name}"
+  priority = "100"
+  allow {
+    protocol = "icmp"
+  }
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "8080", "8443","443"]
+  }
+  source_ranges = ["${var.firewall_allowed_range}"]
+}
+
+
 
 # Instance Template
 resource "google_compute_instance_template" "default" {
   depends_on  = ["google_cloudfunctions_function.function"]
-  name        = "jcripps-terraform-instance"
+  name        = "${var.cluster_name}-instance-template-${random_string.random_name_post.result}"
   description = "This template is used to create app server instances."
 
   instance_description = "description assigned to instances"
-  machine_type         = "${var.instance}" //"n1-standard-1"
+  machine_type         = "${var.instance}" #"n1-standard-1"
   can_ip_forward       = false
 
   scheduling {
@@ -58,9 +74,9 @@ resource "google_compute_instance_template" "default" {
     boot         = true
   }
 
-  // Use an existing disk resource
+  # Use an existing disk resource
   disk {
-    // Instance Templates reference disks by name, not self link
+    # Instance Templates reference disks by name, not self link
     auto_delete = false
     boot        = false
   }
@@ -77,7 +93,7 @@ resource "google_compute_instance_template" "default" {
   }
 
   service_account {
-    scopes = ["userinfo-email", "compute-ro", "storage-ro"]
+    scopes = ["userinfo-email", "compute-ro", "storage-ro","https://www.googleapis.com/auth/bigquery"]
   }
 }
 resource "google_compute_health_check" "autohealing" {
@@ -96,7 +112,7 @@ resource "google_compute_health_check" "autohealing" {
 resource "google_compute_region_instance_group_manager" "appserver" {
   name = "fortigate-autoscale-${random_string.random_name_post.result}"
 
-  base_instance_name        = "app"
+  base_instance_name        = "${var.cluster_name}-instance-${random_string.random_name_post.result}"
   instance_template         = "${google_compute_instance_template.default.self_link}"
   region                    = "us-central1"
   distribution_policy_zones = ["us-central1-a", "us-central1-b"]
@@ -117,7 +133,7 @@ resource "google_compute_region_instance_group_manager" "appserver" {
 ### Regional AutoScaler ###
 resource "google_compute_region_autoscaler" "default" {
   provider = "google-beta"
-  project = "${var.project}"
+  project  = "${var.project}"
   #Name needs to be in lowercase
   name   = "${var.cluster_name}-autoscaler-${random_string.random_name_post.result}"
   region = "${var.region}"
@@ -153,7 +169,7 @@ resource "google_cloudfunctions_function" "function" {
   #If name is updated the Trigger URL will need to be updated too.
   name        = "${var.cluster_name}-${random_string.random_name_post.result}"
   description = "My function"
-  runtime     = "nodejs10" //TODO: add as var
+  runtime     = "nodejs10" #TODO: add as var
 
   available_memory_mb   = 1024
   source_archive_bucket = "${google_storage_bucket.bucket.name}"
@@ -163,47 +179,37 @@ resource "google_cloudfunctions_function" "function" {
   entry_point           = "main"
 
   environment_variables = {
-    PROJECT_ID            = "${var.project}" #Used by Bucket
-    FIRESTORE_DATABASE    = "${var.cluster_name}-fortigateautoscale-${random_string.random_name_post.result}",
-    ASSET_STORAGE_NAME    = "${google_storage_bucket.bucket.name}",
-    ASSET_STORAGE_KEY_PREFIX = "empty",
-    FORTIGATE_PSK_SECRET  = "${random_string.psk.result}",
-    FIRESTORE_INITIALIZED = "false",
-    TRIGGER_URL           = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}"
-    RESOURCE_TAG_PREFIX   = "${var.cluster_name}"
-    PAYG_SCALING_GROUP_NAME = "${var.cluster_name}-${random_string.random_name_post.result}",
-    BYOL_SCALING_GROUP_NAME = "${var.cluster_name}-${random_string.random_name_post.result}",
-    MASTER_SCALING_GROUP_NAME = "${var.cluster_name}-${random_string.random_name_post.result}",
-    HEART_BEAT_LOSS_COUNT = 10,
-    SCRIPT_TIMEOUT = 500,
-    MASTER_ELECTION_TIMEOUT = 180,
-    REQUIRED_CONFIG_SET = "empty",
-    UNIQUE_ID = "empty",
-    CUSTOM_ID = "empty",
-    AUTOSCALE_HANDLER_URL = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}",
-    DEPLOYMENT_SETTINGS_SAVED = "true",
-    ENABLE_FORTIGATE_ELB = "false",
+    PROJECT_ID                 = "${var.project}" #Used by Bucket
+    FIRESTORE_DATABASE         = "${var.cluster_name}-fortigateautoscale-${random_string.random_name_post.result}",
+    ASSET_STORAGE_NAME         = "${google_storage_bucket.bucket.name}",
+    ASSET_STORAGE_KEY_PREFIX   = "empty",
+    FORTIGATE_PSK_SECRET       = "${random_string.psk.result}",
+    FIRESTORE_INITIALIZED      = "false",
+    TRIGGER_URL                = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}"
+    RESOURCE_TAG_PREFIX        = "${var.cluster_name}"
+    PAYG_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
+    BYOL_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
+    MASTER_SCALING_GROUP_NAME  = "${var.cluster_name}-${random_string.random_name_post.result}",
+    HEART_BEAT_LOSS_COUNT      = 10,
+    SCRIPT_TIMEOUT             = 500,
+    MASTER_ELECTION_TIMEOUT    = 180,
+    REQUIRED_CONFIG_SET        = "empty",
+    UNIQUE_ID                  = "empty",
+    CUSTOM_ID                  = "empty",
+    AUTOSCALE_HANDLER_URL      = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}",
+    DEPLOYMENT_SETTINGS_SAVED  = "true",
+    ENABLE_FORTIGATE_ELB       = "false",
     ENABLE_DYNAMIC_NAT_GATEWAY = "false",
-    ENABLE_HYBRID_LICENSING = "false",
-    ENABLE_INTERNAL_ELB = "false",
-    ENABLE_SECOND_NIC = "false",
-    ENABLE_VM_INFO_CACHE = "false",
-    FORTIGATE_ADMIN_PORT = 8443,
+    ENABLE_HYBRID_LICENSING    = "false",
+    ENABLE_INTERNAL_ELB        = "false",
+    ENABLE_SECOND_NIC          = "false",
+    ENABLE_VM_INFO_CACHE       = "false",
+    FORTIGATE_ADMIN_PORT       = 8443,
     #FORTIGATE_AUTOSCALE_VPC_ID = "", #TODO: add instance group id
-    FORTIGATE_SYNC_INTERFACE = "port1",
-    MASTER_ELECTION_NO_WAIT = "true",
-    HEARTBEAT_INTERVAL = 25,
+    FORTIGATE_SYNC_INTERFACE   = "port1",
+    MASTER_ELECTION_NO_WAIT    = "true",
+    HEARTBEAT_INTERVAL         = 25,
     HEART_BEAT_DELAY_ALLOWANCE = 2,
-
-
-
-
-
-
-
-
-
-
   }
 }
 
@@ -282,7 +288,7 @@ output "google_compute_region_instance_group_manager" {
 output "Trigger_URL" {
   value = "${google_cloudfunctions_function.function.https_trigger_url}"
 }
-output "Ip_Address" {
+output "LoadBalancer_Ip_Address" {
   value = "${google_compute_global_forwarding_rule.default.ip_address}"
 }
 output "LoadBalance_instances" {

@@ -1,60 +1,63 @@
 variable "region" {
-    type = "string"
-    default = "us-central1" #Default Region
+  type    = "string"
+  default = "us-central1" #Default Region
 }
 variable "project" {
-  type = "string"
+  type    = "string"
   default = ""
 }
-variable "vpc_cidr"{
-    type = "string"
-    default = "172.16.0.0/16"
+variable "vpc_cidr" {
+  type    = "string"
+  default = "172.16.0.0/16"
 }
 
-variable "public_subnet"{
-    type = "string"
-    default = "172.16.0.0/21"
+variable "public_subnet" {
+  type    = "string"
+  default = "172.16.0.0/21"
 }
-variable "protected_subnet"{
-    type = "string"
-    default = "172.16.8.0/21"
+variable "protected_subnet" {
+  type    = "string"
+  default = "172.16.8.0/21"
 }
-
+variable "firewall_allowed_range" {
+  type = "string"
+  default = "0.0.0.0/0"
+}
 
 #CPU threshold to scale in or out
-variable "max_replicas"{
-    type = number
-    default = 4
+variable "max_replicas" {
+  type    = number
+  default = 4
 }
-variable "min_replicas"{
-    type = number
-    default = 2
+variable "min_replicas" {
+  type    = number
+  default = 2
 }
 #Retrieves the current account for use with Function Compute
 variable "cooldown_period" {
-  type = number
+  type    = number
   default = 60
 }
 variable "cpu_utilization" {
-    type = number
-    default = 0.5 #Aggregated
+  type    = number
+  default = 0.5 #Aggregated
 }
 
 
 #Must be lower-case for VPC
-variable "cluster_name"{
-    type = "string"
-    default = "fortigateautoscale"
+variable "cluster_name" {
+  type    = "string"
+  default = "fortigateautoscale"
 }
 
 
 #Must be all lower case
-variable "bucket_name"{
-    type = "string"
-    default = "fortigateautoscale"
+variable "bucket_name" {
+  type    = "string"
+  default = "fortigateautoscale"
 }
 #Default n1-standard-1
 variable "instance" {
-    type = "string"
-    default = "n1-standard-1"
+  type    = "string"
+  default = "n1-standard-1"
 }
