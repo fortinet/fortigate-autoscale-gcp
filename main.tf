@@ -1,3 +1,11 @@
+terraform {
+  required_version = ">=0.12.0"
+  required_providers {
+    google = "2.11.0"
+    google-beta = "2.13"
+  }
+}
+
 provider "google" {
   credentials = "${file("account.json")}"
   project     = "${var.project}"
@@ -97,7 +105,7 @@ resource "google_compute_instance_template" "default" {
   }
 }
 resource "google_compute_health_check" "autohealing" {
-  name                = "autohealing-health-check"
+  name                = "${var.cluster_name}-healthcheck-${random_string.random_name_post.result}"
   check_interval_sec  = 5
   timeout_sec         = 5
   healthy_threshold   = 2
@@ -110,7 +118,8 @@ resource "google_compute_health_check" "autohealing" {
 }
 
 resource "google_compute_region_instance_group_manager" "appserver" {
-  name = "fortigate-autoscale-${random_string.random_name_post.result}"
+
+  name = "${var.cluster_name}-fortigate-autoscale-${random_string.random_name_post.result}"
 
   base_instance_name        = "${var.cluster_name}-instance-${random_string.random_name_post.result}"
   instance_template         = "${google_compute_instance_template.default.self_link}"
@@ -169,7 +178,7 @@ resource "google_cloudfunctions_function" "function" {
   #If name is updated the Trigger URL will need to be updated too.
   name        = "${var.cluster_name}-${random_string.random_name_post.result}"
   description = "My function"
-  runtime     = "nodejs10" #TODO: add as var
+  runtime     = "${var.nodejs_version}"
 
   available_memory_mb   = 1024
   source_archive_bucket = "${google_storage_bucket.bucket.name}"
@@ -215,19 +224,19 @@ resource "google_cloudfunctions_function" "function" {
 
 #### Load Balancer ####
 resource "google_compute_global_forwarding_rule" "default" {
-  name       = "global-rule"
+  name       = "${var.cluster_name}-global-rule-${random_string.random_name_post.result}"
   target     = "${google_compute_target_http_proxy.default.self_link}"
   port_range = "80"
 }
 
 resource "google_compute_target_http_proxy" "default" {
-  name        = "target-proxy"
+  name        = "${var.cluster_name}-target-proxy-${random_string.random_name_post.result}"
   description = "a description"
   url_map     = "${google_compute_url_map.default.self_link}"
 }
 
 resource "google_compute_url_map" "default" {
-  name            = "url-map-target-proxy"
+  name            = "${var.cluster_name}-url-map-target-proxy-${random_string.random_name_post.result}"
   description     = ""
   default_service = "${google_compute_backend_service.default.self_link}"
 
@@ -248,7 +257,7 @@ resource "google_compute_url_map" "default" {
 }
 
 resource "google_compute_backend_service" "default" {
-  name        = "backend"
+  name        = "${var.cluster_name}-backend-${random_string.random_name_post.result}"
   port_name   = "http"
   protocol    = "HTTP"
   timeout_sec = 10
@@ -257,7 +266,7 @@ resource "google_compute_backend_service" "default" {
 }
 
 resource "google_compute_http_health_check" "default" {
-  name               = "check-backend"
+  name               = "${var.cluster_name}-check-backend-${random_string.random_name_post.result}"
   request_path       = "/"
   check_interval_sec = 1
   timeout_sec        = 1
@@ -266,7 +275,7 @@ resource "google_compute_http_health_check" "default" {
 
 ### Target Pools ###
 resource "google_compute_target_pool" "default" {
-  name = "instance-pool"
+  name = "${var.cluster_name}-instancepool-${random_string.random_name_post.result}"
 
   instances = [
 
