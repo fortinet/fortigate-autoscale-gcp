@@ -1,17 +1,23 @@
 terraform {
-  required_version = ">=0.12.0"
+  #required_version = "=0.12.0"
   required_providers {
     google = "2.11.0"
     google-beta = "2.13"
   }
 }
-
 provider "google" {
   credentials = "${file("account.json")}"
   project     = "${var.project}"
   region      = "us-central1"
   zone        = "us-central1-c"
 }
+provider "google-beta" {
+  credentials = "${file("account.json")}"
+  project     = "${var.project}"
+  region      = "us-central1"
+  zone        = "us-central1-c"
+}
+
 resource "random_string" "psk" {
   length           = 16
   special          = true
@@ -105,6 +111,7 @@ resource "google_compute_instance_template" "default" {
   }
 }
 resource "google_compute_health_check" "autohealing" {
+  provider = "google-beta"
   name                = "${var.cluster_name}-healthcheck-${random_string.random_name_post.result}"
   check_interval_sec  = 5
   timeout_sec         = 5
@@ -132,11 +139,6 @@ resource "google_compute_region_instance_group_manager" "appserver" {
   named_port {
     name = "custom"
     port = 8888
-  }
-
-  auto_healing_policies {
-    health_check      = "${google_compute_health_check.autohealing.self_link}"
-    initial_delay_sec = 300
   }
 }
 ### Regional AutoScaler ###
