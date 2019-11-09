@@ -1,5 +1,4 @@
 terraform {
-  #required_version = "=0.12.0"
   required_providers {
     google = "2.11.0"
     google-beta = "2.13"
@@ -16,6 +15,11 @@ provider "google-beta" {
   project     = "${var.project}"
   region      = "us-central1"
   zone        = "us-central1-c"
+}
+
+variable "public_key_path" {
+  type    = "string"
+  default = "~/.ssh/id_rsa.pub"
 }
 
 resource "random_string" "psk" {
@@ -41,12 +45,13 @@ resource "google_compute_subnetwork" "public_subnet" {
   network       = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.public_subnet}"
 }
-resource "google_compute_subnetwork" "private_subnet" {
-  name          = "${var.cluster_name}-private-subnet-${random_string.random_name_post.result}"
-  region        = "${var.region}"
-  network       = "${google_compute_network.vpc_network.self_link}"
-  ip_cidr_range = "${var.protected_subnet}"
-}
+
+ resource "google_compute_subnetwork" "private_subnet" {
+   name          = "${var.cluster_name}-private-subnet-${random_string.random_name_post.result}"
+   region        = "${var.region}"
+   network       = "${google_compute_network.vpc_network.self_link}"
+   ip_cidr_range = "${var.protected_subnet}"
+ }
 ### Firewall Policy ###
 #Default direction is ingress
 resource "google_compute_firewall" "firewall" {
@@ -54,13 +59,9 @@ resource "google_compute_firewall" "firewall" {
   network = "${google_compute_network.vpc_network.name}"
   priority = "100"
   allow {
-    protocol = "icmp"
+    protocol = "all"
   }
 
-  allow {
-    protocol = "tcp"
-    ports    = ["80", "8080", "8443","443"]
-  }
   source_ranges = ["${var.firewall_allowed_range}"]
 }
 
@@ -80,10 +81,10 @@ resource "google_compute_instance_template" "default" {
     automatic_restart   = true
     on_host_maintenance = "MIGRATE"
   }
-
+  # https://www.googleapis.com/compute/v1/projects/fortigcp-project-001/global/images/fortinet-fgtondemand-622-20191010-001-w-license
   # Create a new boot disk from an image
   disk {
-    source_image = "projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license" #Default 6.2.1 PAYG
+    source_image = "projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license"    #Default 6.2.1 PAYG
     auto_delete  = true
     boot         = true
   }
@@ -91,7 +92,7 @@ resource "google_compute_instance_template" "default" {
   # Use an existing disk resource
   disk {
     # Instance Templates reference disks by name, not self link
-    auto_delete = false
+    auto_delete = true
     boot        = false
   }
 
@@ -104,6 +105,7 @@ resource "google_compute_instance_template" "default" {
   }
   metadata = {
     user-data : "{'config-url':'${google_cloudfunctions_function.function.https_trigger_url}'}"
+    ssh-keys="admin:${file(var.public_key_path)}"
   }
 
   service_account {
@@ -203,7 +205,7 @@ resource "google_cloudfunctions_function" "function" {
     MASTER_SCALING_GROUP_NAME  = "${var.cluster_name}-${random_string.random_name_post.result}",
     HEART_BEAT_LOSS_COUNT      = 10,
     SCRIPT_TIMEOUT             = 500,
-    MASTER_ELECTION_TIMEOUT    = 180,
+    MASTER_ELECTION_TIMEOUT    = 400,
     REQUIRED_CONFIG_SET        = "empty",
     UNIQUE_ID                  = "empty",
     CUSTOM_ID                  = "empty",
@@ -220,7 +222,7 @@ resource "google_cloudfunctions_function" "function" {
     FORTIGATE_SYNC_INTERFACE   = "port1",
     MASTER_ELECTION_NO_WAIT    = "true",
     HEARTBEAT_INTERVAL         = 25,
-    HEART_BEAT_DELAY_ALLOWANCE = 2,
+    HEART_BEAT_DELAY_ALLOWANCE = 10,
   }
 }
 
