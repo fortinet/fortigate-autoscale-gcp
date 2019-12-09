@@ -15,6 +15,7 @@
     "@google-cloud/firestore": "^2.2.6",
     "@google-cloud/storage": "^3.1.0",
     "@types/mocha": "^5.2.7",
+    "axios": "^0.19.0",
     "fortigate-autoscale-core": "file:./core",
     "tslint": "^5.18.0",
     "uuid": "^3.3.2",
@@ -31,7 +32,6 @@
     "fortigate-autoscale-core"
   ],
   "scripts": {
-    "pretest": "eslint --fix .",
     "build": "scripts/make-dist.js",
     "test": "nyc mocha --recursive './test/mocha/*.js'"
   },

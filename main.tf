@@ -1,3 +1,4 @@
+joel
 terraform {
   required_providers {
     google = "2.11.0"
@@ -5,21 +6,16 @@ terraform {
   }
 }
 provider "google" {
-  credentials = "${file("account.json")}"
+  credentials = "${file("${var.auth_key}")}"
   project     = "${var.project}"
-  region      = "us-central1"
-  zone        = "us-central1-c"
+  region      = "${var.region}"
+  zone        = "${var.zone}"
 }
 provider "google-beta" {
-  credentials = "${file("account.json")}"
+  credentials = "${file("${var.auth_key}")}"
   project     = "${var.project}"
-  region      = "us-central1"
-  zone        = "us-central1-c"
-}
-
-variable "public_key_path" {
-  type    = "string"
-  default = "~/.ssh/id_rsa.pub"
+  region      = "${var.region}"
+  zone        = "${var.zone}"
 }
 
 resource "random_string" "psk" {
@@ -84,12 +80,11 @@ resource "google_compute_instance_template" "default" {
   # https://www.googleapis.com/compute/v1/projects/fortigcp-project-001/global/images/fortinet-fgtondemand-622-20191010-001-w-license
   # Create a new boot disk from an image
   disk {
-    source_image = "projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license"    #Default 6.2.1 PAYG
+    source_image = "${var.fortigate_image}" //"projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license"    #Default 6.2.1 PAYG
     auto_delete  = true
     boot         = true
   }
-
-  # Use an existing disk resource
+  # Logging Disk
   disk {
     # Instance Templates reference disks by name, not self link
     auto_delete = true
@@ -103,13 +98,13 @@ resource "google_compute_instance_template" "default" {
     }
 
   }
+  # Callback url and ssh key
   metadata = {
     user-data : "{'config-url':'${google_cloudfunctions_function.function.https_trigger_url}'}"
     ssh-keys="admin:${file(var.public_key_path)}"
   }
-
   service_account {
-    scopes = ["userinfo-email", "compute-ro", "storage-ro","https://www.googleapis.com/auth/bigquery"]
+    scopes = ["userinfo-email", "compute-ro", "storage-ro"]
   }
 }
 resource "google_compute_health_check" "autohealing" {
@@ -121,7 +116,7 @@ resource "google_compute_health_check" "autohealing" {
   unhealthy_threshold = 10 # 50 seconds
 
   http_health_check {
-    request_path = "/healthz"
+    request_path = "/"
     port         = "8443"
   }
 }
@@ -169,9 +164,9 @@ resource "google_storage_bucket" "bucket" {
 }
 
 resource "google_storage_bucket_object" "archive" {
-  name   = "gcp.zip"
+  name   = "${var.source_code_name}"
   bucket = "${google_storage_bucket.bucket.name}"
-  source = "./dist/gcp.zip"
+  source = "${var.source_code}"
 }
 resource "google_storage_bucket_object" "baseconfig" {
   name   = "baseconfig"
@@ -188,7 +183,7 @@ resource "google_cloudfunctions_function" "function" {
   source_archive_bucket = "${google_storage_bucket.bucket.name}"
   source_archive_object = "${google_storage_bucket_object.archive.name}"
   trigger_http          = true
-  timeout               = 500
+  timeout               = "${var.SCRIPT_TIMEOUT}"
   entry_point           = "main"
 
   environment_variables = {
@@ -203,9 +198,9 @@ resource "google_cloudfunctions_function" "function" {
     PAYG_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
     BYOL_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
     MASTER_SCALING_GROUP_NAME  = "${var.cluster_name}-${random_string.random_name_post.result}",
-    HEART_BEAT_LOSS_COUNT      = 10,
-    SCRIPT_TIMEOUT             = 500,
-    MASTER_ELECTION_TIMEOUT    = 400,
+    HEART_BEAT_LOSS_COUNT      = "${var.HEART_BEAT_LOSS_COUNT}",
+    SCRIPT_TIMEOUT             = "${var.SCRIPT_TIMEOUT}"
+    MASTER_ELECTION_TIMEOUT    = "${MASTER_ELECTION_TIMEOUT}",
     REQUIRED_CONFIG_SET        = "empty",
     UNIQUE_ID                  = "empty",
     CUSTOM_ID                  = "empty",
@@ -217,12 +212,11 @@ resource "google_cloudfunctions_function" "function" {
     ENABLE_INTERNAL_ELB        = "false",
     ENABLE_SECOND_NIC          = "false",
     ENABLE_VM_INFO_CACHE       = "false",
-    FORTIGATE_ADMIN_PORT       = 8443,
-    #FORTIGATE_AUTOSCALE_VPC_ID = "", #TODO: add instance group id
+    FORTIGATE_ADMIN_PORT       = "${var.FORTIGATE_ADMIN_PORT}",
     FORTIGATE_SYNC_INTERFACE   = "port1",
     MASTER_ELECTION_NO_WAIT    = "true",
-    HEARTBEAT_INTERVAL         = 25,
-    HEART_BEAT_DELAY_ALLOWANCE = 10,
+    HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
+    HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}"
   }
 }
 
@@ -303,9 +297,6 @@ output "Trigger_URL" {
 }
 output "LoadBalancer_Ip_Address" {
   value = "${google_compute_global_forwarding_rule.default.ip_address}"
-}
-output "LoadBalance_instances" {
-  value = "${google_compute_target_pool.default.instances}"
 }
 output "Notes" {
   value = "The FireStore Database must be deleted seperately"

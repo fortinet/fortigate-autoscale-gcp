@@ -150,7 +150,6 @@ class GCP extends CloudPlatform<
     }
 
     public async getSettingItems(keyFilter?: string[], valueOnly?: boolean) {
-        console.log('getting settings');
         let item;
         let settingItem: AutoScaleCore.SettingItem;
         const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/SETTINGS`);
@@ -274,6 +273,7 @@ class GCP extends CloudPlatform<
                 voteState: getDoc._fieldsProto.masterRecord.mapValue.fields.VoteState.stringValue,
                 vpcId: getDoc._fieldsProto.masterRecord.mapValue.fields.VpcId.stringValue,
             };
+            console.log(`Master Record  + ${docData}`)
             return docData;
         } else {
             console.log('No Master record found in DB returning Null');
@@ -312,28 +312,28 @@ class GCP extends CloudPlatform<
                     throw(err);
                 }
                 if (getDoc && getDoc._fieldsProto && getDoc._fieldsProto[recordId] &&
-                    getDoc._fieldsProto[recordId].mapValue.fields &&
-                    getDoc._fieldsProto[recordId].mapValue.fields.InstanceId
+                    getDoc._fieldsProto[recordId].mapValue.fields
                     ) {
-                        var docData: AutoScaleCore.HealthCheck = {
-                        instanceId: getDoc._fieldsProto[recordId].mapValue.fields.InstanceId.stringValue,
-                        inSync: getDoc._fieldsProto[recordId].mapValue.fields.inSync.stringValue,
-                        healthy: getDoc._fieldsProto[recordId].mapValue.fields.healthy.stringValue,
+                        var docData : AutoScaleCore.HealthCheck= {
+                        instanceId: recordId,
+                        inSync: getDoc._fieldsProto[recordId].mapValue.fields.inSync.booleanValue,
+                        healthy: getDoc._fieldsProto[recordId].mapValue.fields.healthy.booleanValue,
                         masterIp: getDoc._fieldsProto[recordId].mapValue.fields.masterIp.stringValue,
-                        heartBeatLossCount:  getDoc._fieldsProto[recordId].mapValue.fields.heartBeatLossCount.stringValue,
-                        heartBeatInterval: getDoc._fieldsProto[recordId].mapValue.fields.heartBeatInterval.stringValue,
-                        nextHeartBeatTime: getDoc._fieldsProto[recordId].mapValue.fields.nextHeartBeatTime.stringValue,
-                        ip: getDoc._fieldsProto[recordId].mapValue.fields.primaryPrivateIpAddress.stringValue,
+                        // In the case that HeartBeatLoss is not yet defined return 0. Only occurs on first set up.
+                        heartBeatLossCount: getDoc._fieldsProto[recordId].mapValue.fields.heartBeatLossCount.integerValue || 0,
+                        heartBeatInterval: getDoc._fieldsProto[recordId].mapValue.fields.heartBeatInterval.integerValue || 25,
+                        nextHeartBeatTime: getDoc._fieldsProto[recordId].mapValue.fields.nextHeartBeatTime.integerValue,
+                        ip: getDoc._fieldsProto[recordId].mapValue.fields.ip.stringValue,
                         syncState: getDoc._fieldsProto[recordId].mapValue.fields.syncState.stringValue,
                         };
                     }
-                console.log(`AutoScaleTableData ${docData}`);
+                console.log(`AutoScaleTableData ${JSON.stringify(docData)}`);
                 return docData;
     }
     public async updateInstanceHealthCheck(healthCheck: AutoScaleCore.HealthCheck,
                                            heartBeatInterval: number, masterIp: string,
                                            checkPointTime: number, forceOutOfSync?: boolean): Promise<boolean> {
-        const datetoInt = Date.now();
+        const datetoInt = checkPointTime || Date.now();
         const autoScaleRecordUpdate = this.fireStoreClient;
         const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEAUTOSCALE`);
         const fieldName = healthCheck.instanceId;
@@ -341,18 +341,17 @@ class GCP extends CloudPlatform<
             instanceId: healthCheck.instanceId,
             ip: healthCheck.ip,
             inSync: healthCheck.inSync,
-            heartBeatLossCount: healthCheck.heartBeatLossCount,
+            heartBeatLossCount: healthCheck.heartBeatLossCount || 0,
             heartBeatInterval,
             masterIp,
             syncState: healthCheck.syncState,
-            nextHeartBeatTime: datetoInt, // TODO: update to checkpointtime
+            nextHeartBeatTime: datetoInt,
             healthy: healthCheck.healthy,
         };
         try {
             await document.update({
-                [fieldName] : {
+                [fieldName] :
                     instanceRecord,
-                },
             });
             return true;
         } catch (err) {
@@ -378,7 +377,7 @@ class GCP extends CloudPlatform<
     public async finalizeMasterElection(): Promise<boolean> {
             console.log('Finalizing Master Election');
             const autoScaleRecordUpdate = this.fireStoreClient;
-            const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`); // TODO: fix autoscalerecordupate names for each firestore var
+            const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
             try {
                 // Updates a nested object without removing the entire object.
                 await document.update({
@@ -416,7 +415,6 @@ class GCP extends CloudPlatform<
         } else if (runtimeAgent) {
             // FortiGate does not send encoding, so a request must be parsed as follows:
             const parseReq = JSON.parse(Object.keys(runtimeAgent.body)[0]);
-            console.log(parseReq);
             instanceId = parseReq.instance;
             interval = parseReq.interval;
         } else if (runtimeAgent) {
@@ -444,9 +442,6 @@ class GCP extends CloudPlatform<
     try {
         console.log('Fetching VMs');
         const [vms] = await this.compute.getVMs(options);
-
-
-        //TODO: add id (name ) and zone to constructors.
         for (let vmData of vms) {
             if (vmData.metadata.id === descriptor.instanceId) {
                 // TODO: look into additional values of the VM types.
@@ -457,10 +452,8 @@ class GCP extends CloudPlatform<
                     SubnetId: vmData.metadata.networkInterfaces[0].subnetwork,
                     virtualNetworkId: 'empty',
                 };
-
                 return vmReturn;
             }
-
         }
     } catch (err) {
         console.log(err);
@@ -482,12 +475,9 @@ class GCP extends CloudPlatform<
     }
 
     public async terminateInstanceInAutoScalingGroup(instance: GCPVirtualMachine): Promise<boolean> {
-        console.log(`terminating instance: ${instance}`);
-        console.log(`terminating instance: ${instance.toString()}`);
-        console.log(`terminating instance: ${JSON.stringify(instance)}`);
         try {
-            // await vm.delete();
-            // console.log(`Deleted instance:  ${instance.instanceId}`);
+            const vm = await this.compute.vm(instance).delete();
+            console.log(`Deleted instance:  ${instance.instanceId}`);
             return true;
         } catch (err) {
             console.log(`Failed to Delete instance:  ${err}`);
@@ -659,14 +649,12 @@ GCP
                     console.log('Settings already exist');
                     await this.loadSettings();
                 } else {
-
                 for (const table of tableArray) {
                     console.log(`Initializing FireStore Document ${table}`);
                     const tableCreate = await this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/${table}`);
                     await tableCreate.set({
                     });
                 }
-
                 await this.saveSettings(requiredSettings);
                 await this.saveSettings({
                       'deployment-settings-saved': 'true',
@@ -701,8 +689,7 @@ GCP
 
     public async addInstanceToMonitor(instance: GCPVirtualMachine, heartBeatInterval: number,
                                       masterIp?: string): Promise<boolean> {
-        console.log('Adding Instance to monitor (FORTIGATEAUTOSCALE)');
-        console.log(instance.instanceId);
+        console.log(`Adding Instance to monitor (FORTIGATEAUTOSCALE) ${instance.instanceId}`);
         const datetoInt = Date.now();
         const nextHeartBeat = Date.now() + heartBeatInterval * 1000;
         const autoScaleRecordUpdate =  this.fireStoreClient;
@@ -712,14 +699,15 @@ GCP
         try {
             await document.update({
                 [fieldName] : {
-                    heartBeatInterval,
+                    heartBeatInterval: 0,
                     heartBeatLossCount: 0,
                     masterIp,
                     checkPointTime: datetoInt,
+                    ip: instance.primaryPrivateIpAddress,
                     primaryPrivateIpAddress: instance.primaryPrivateIpAddress,
                     inSync: true,
                     syncState: 'in-sync',
-                    nextHeartBeatTime: nextHeartBeat,
+                    nextHeartBeatTime: nextHeartBeat || 0,
                     healthy: true,
                 },
             });
@@ -891,9 +879,7 @@ exports.main = async function(req, res, callback) {
 async function getTables() {
     const dbCollection = Tables;
     return await dbCollection;
-
 }
-
 if (module === require.main) {
     exports.main(console.log);
 }
