@@ -9,6 +9,12 @@
         "**/sample_module/index.ts"
 
     ],
+    "include": [
+        "node_modules/fortigate-autoscale-core",
+        "node_modules/fortigate-autoscale-core/package.json",
+        "index.ts",
+        "package.json"
+    ],
     "compilerOptions": {
         /* VSCode Plugins*/
         "plugins": [{
@@ -31,7 +37,7 @@
         // "outFile": "./",                       /* Concatenate and emit output to single file. */
         "outDir": "./dist",
         /* Redirect output structure to the directory. */
-        // "rootDir": "./",                       /* Specify the root directory of input files. Use to control the output directory structure with --outDir. */
+         "rootDir": "./",                         /* Specify the root directory of input files. Use to control the output directory structure with --outDir. */
         // "composite": true,                     /* Enable project compilation */
         // "incremental": true,                   /* Enable incremental compilation */
         // "tsBuildInfoFile": "./",               /* Specify file to store incremental compilation information */
