@@ -1,11 +1,11 @@
-import { Tables } from './core/db-definitions';
+import { Tables } from 'fortigate-autoscale-core/db-definitions';
 import {Firestore, FieldValue} from '@google-cloud/firestore';
 import * as AutoScaleCore from 'fortigate-autoscale-core';
 import Compute from '@google-cloud/compute';
 import {Storage} from '@google-cloud/storage';
-import { CloudPlatform, LicenseRecord } from './core';
-import {AutoscaleHandler} from './core/autoscale-handler';
-import * as Platform from './core/cloud-platform';
+import { CloudPlatform, LicenseRecord } from 'fortigate-autoscale-core';
+import {AutoscaleHandler} from 'fortigate-autoscale-core/autoscale-handler';
+import * as Platform from 'fortigate-autoscale-core/cloud-platform';
 import { URL } from 'url';
 
 const {
@@ -138,6 +138,7 @@ class GCP extends CloudPlatform<
         projectId: PROJECT_ID,
     });
     private fireStoreClient = new Firestore();
+
     public respond(response: AutoScaleCore.ErrorDataPairLike, httpStatusCode?: number): Promise<void> {
         throw new Error('Method not implemented.');
     }
@@ -327,7 +328,6 @@ class GCP extends CloudPlatform<
                         syncState: getDoc._fieldsProto[recordId].mapValue.fields.syncState.stringValue,
                         };
                     }
-                console.log(`AutoScaleTableData ${JSON.stringify(docData)}`);
                 return docData;
     }
     public async updateInstanceHealthCheck(healthCheck: AutoScaleCore.HealthCheck,
@@ -629,7 +629,6 @@ GCP
             'master-election-no-wait': process.env.MASTER_ELECTION_NO_WAIT,
             'heartbeat-interval': process.env.HEARTBEAT_INTERVAL,
             'heart-beat-delay-allowance': process.env.HEART_BEAT_DELAY_ALLOWANCE,
-
         };
         const db = await getTables();
         const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/SETTINGS`);

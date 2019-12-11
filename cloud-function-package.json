@@ -16,7 +16,7 @@
     "@google-cloud/storage": "^3.1.0",
     "@types/mocha": "^5.2.7",
     "typescript": "^3.7.3",
-    "fortigate-autoscale-core": "github:fortinet/autoscale-core.git#3.0.0-alpha.1",
+    "fortigate-autoscale-core": "file:fortigate-autoscale-core",
     "tslint": "^5.18.0",
     "uuid": "^3.3.2",
     "xml2js": "^0.4.19"
@@ -24,7 +24,7 @@
   "devDependencies": {
     "eslint": "^5.4.0",
     "eslint-plugin-mocha": "^5.2.0",
-    "fortigate-autoscale-core": "github:fortinet/autoscale-core.git#3.0.0-alpha.1",
+
     "ftnt-devops-ci": "github:guardhao104/ftnt-devops-ci",
     "mocha": "^5.2.0",
     "nyc": "^14.1.1",
@@ -34,7 +34,7 @@
     "fortigate-autoscale-core"
   ],
   "scripts": {
-    "setup": "mkdir dist && npx tsc && cp cloud-function-package.json ./dist/package.json && cd ./dist && cp -r node_modules/fortigate-autoscale-core fortigate-autoscale-core && zip -r  gcp.zip index.js package.json  fortigate-autoscale-core && cd ..",
+    "setup": "mkdir dist && npx tsc && cd ./dist && cp -r node_modules/fortigate-autoscale-core fortigate-autoscale-core && zip -r  gcp.zip index.js package.json  fortigate-autoscale-core && cd ..",
     "test": "nyc mocha --recursive './test/mocha/*.js'"
   },
   "author": "fortinet",

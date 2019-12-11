@@ -53,7 +53,7 @@ variable "source_code_name" {
 variable "public_key_path" {
   type    = "string"
   default = ""
-
+}
 
 #### Network Settings ####
 variable "vpc_cidr" {

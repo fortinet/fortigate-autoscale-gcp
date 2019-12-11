@@ -1,4 +1,3 @@
-joel
 terraform {
   required_providers {
     google = "2.11.0"
@@ -6,13 +5,13 @@ terraform {
   }
 }
 provider "google" {
-  credentials = "${file("${var.auth_key}")}"
+  credentials = "${file(var.auth_key)}"
   project     = "${var.project}"
   region      = "${var.region}"
   zone        = "${var.zone}"
 }
 provider "google-beta" {
-  credentials = "${file("${var.auth_key}")}"
+  credentials = "${file(var.auth_key)}"
   project     = "${var.project}"
   region      = "${var.region}"
   zone        = "${var.zone}"
@@ -48,6 +47,7 @@ resource "google_compute_subnetwork" "public_subnet" {
    network       = "${google_compute_network.vpc_network.self_link}"
    ip_cidr_range = "${var.protected_subnet}"
  }
+
 ### Firewall Policy ###
 #Default direction is ingress
 resource "google_compute_firewall" "firewall" {
@@ -60,8 +60,6 @@ resource "google_compute_firewall" "firewall" {
 
   source_ranges = ["${var.firewall_allowed_range}"]
 }
-
-
 
 # Instance Template
 resource "google_compute_instance_template" "default" {
@@ -96,12 +94,10 @@ resource "google_compute_instance_template" "default" {
     access_config {
       nat_ip = ""
     }
-
   }
   # Callback url and ssh key
   metadata = {
     user-data : "{'config-url':'${google_cloudfunctions_function.function.https_trigger_url}'}"
-    ssh-keys="admin:${file(var.public_key_path)}"
   }
   service_account {
     scopes = ["userinfo-email", "compute-ro", "storage-ro"]
@@ -166,7 +162,7 @@ resource "google_storage_bucket" "bucket" {
 resource "google_storage_bucket_object" "archive" {
   name   = "${var.source_code_name}"
   bucket = "${google_storage_bucket.bucket.name}"
-  source = "${var.source_code}"
+  source = "${var.source_code_location}"
 }
 resource "google_storage_bucket_object" "baseconfig" {
   name   = "baseconfig"
@@ -187,36 +183,37 @@ resource "google_cloudfunctions_function" "function" {
   entry_point           = "main"
 
   environment_variables = {
-    PROJECT_ID                 = "${var.project}" #Used by Bucket
-    FIRESTORE_DATABASE         = "${var.cluster_name}-fortigateautoscale-${random_string.random_name_post.result}",
-    ASSET_STORAGE_NAME         = "${google_storage_bucket.bucket.name}",
-    ASSET_STORAGE_KEY_PREFIX   = "empty",
-    FORTIGATE_PSK_SECRET       = "${random_string.psk.result}",
-    FIRESTORE_INITIALIZED      = "false",
-    TRIGGER_URL                = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}"
-    RESOURCE_TAG_PREFIX        = "${var.cluster_name}"
-    PAYG_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
-    BYOL_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
-    MASTER_SCALING_GROUP_NAME  = "${var.cluster_name}-${random_string.random_name_post.result}",
-    HEART_BEAT_LOSS_COUNT      = "${var.HEART_BEAT_LOSS_COUNT}",
-    SCRIPT_TIMEOUT             = "${var.SCRIPT_TIMEOUT}"
-    MASTER_ELECTION_TIMEOUT    = "${MASTER_ELECTION_TIMEOUT}",
-    REQUIRED_CONFIG_SET        = "empty",
-    UNIQUE_ID                  = "empty",
-    CUSTOM_ID                  = "empty",
-    AUTOSCALE_HANDLER_URL      = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}",
-    DEPLOYMENT_SETTINGS_SAVED  = "true",
-    ENABLE_FORTIGATE_ELB       = "false",
-    ENABLE_DYNAMIC_NAT_GATEWAY = "false",
-    ENABLE_HYBRID_LICENSING    = "false",
-    ENABLE_INTERNAL_ELB        = "false",
-    ENABLE_SECOND_NIC          = "false",
-    ENABLE_VM_INFO_CACHE       = "false",
-    FORTIGATE_ADMIN_PORT       = "${var.FORTIGATE_ADMIN_PORT}",
-    FORTIGATE_SYNC_INTERFACE   = "port1",
-    MASTER_ELECTION_NO_WAIT    = "true",
-    HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
-    HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}"
+      PROJECT_ID                 = "${var.project}" #Used by Bucket
+      FIRESTORE_DATABASE         = "${var.cluster_name}-fortigateautoscale-${random_string.random_name_post.result}",
+      ASSET_STORAGE_NAME         = "${google_storage_bucket.bucket.name}",
+      ASSET_STORAGE_KEY_PREFIX   = "empty",
+      FORTIGATE_PSK_SECRET       = "${random_string.psk.result}",
+      FIRESTORE_INITIALIZED      = "false",
+      TRIGGER_URL                = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}"
+      RESOURCE_TAG_PREFIX        = "${var.cluster_name}"
+      PAYG_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
+      BYOL_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
+      MASTER_SCALING_GROUP_NAME  = "${var.cluster_name}-${random_string.random_name_post.result}",
+      HEART_BEAT_LOSS_COUNT      = "${var.HEART_BEAT_LOSS_COUNT}",
+      SCRIPT_TIMEOUT             = "${var.SCRIPT_TIMEOUT}"
+      MASTER_ELECTION_TIMEOUT    = "${var.MASTER_ELECTION_TIMEOUT}",
+      REQUIRED_CONFIG_SET        = "empty",
+      UNIQUE_ID                  = "empty",
+      CUSTOM_ID                  = "empty",
+      AUTOSCALE_HANDLER_URL      = "https://${var.region}-${var.project}.cloudfunctions.net/${var.cluster_name}-${random_string.random_name_post.result}",
+      DEPLOYMENT_SETTINGS_SAVED  = "true",
+      ENABLE_FORTIGATE_ELB       = "false",
+      ENABLE_DYNAMIC_NAT_GATEWAY = "false",
+      ENABLE_HYBRID_LICENSING    = "false",
+      ENABLE_INTERNAL_ELB        = "false",
+      ENABLE_SECOND_NIC          = "false",
+      ENABLE_VM_INFO_CACHE       = "false",
+      FORTIGATE_ADMIN_PORT       = "${var.FORTIGATE_ADMIN_PORT}",
+      FORTIGATE_SYNC_INTERFACE   = "port1",
+      MASTER_ELECTION_NO_WAIT    = "true",
+      HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
+      HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}",
+      FORTIGATE_AUTOSCALE_VPC_ID = "empty",
   }
 }
 
