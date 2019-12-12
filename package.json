@@ -14,21 +14,22 @@
     "@google-cloud/compute": "^1.1.2",
     "@google-cloud/firestore": "^2.2.6",
     "@google-cloud/storage": "^3.1.0",
-    "@types/mocha": "^5.2.7",
-    "typescript": "^3.7.3",
-    "fortigate-autoscale-core": "github:fortinet/autoscale-core.git#3.0.0-alpha.1",
+    "fortigate-autoscale-core": "github:fortinet/autoscale-core#3.0.0-alpha.1",
     "tslint": "^5.18.0",
+    "typescript": "^3.7.3",
     "uuid": "^3.3.2",
     "xml2js": "^0.4.19"
   },
   "devDependencies": {
+    "axios": "^0.19.0",
+    "@types/chai": "^4.2.7",
+    "@types/mocha": "^5.2.7",
+    "chai": "^4.2.0",
     "eslint": "^5.4.0",
     "eslint-plugin-mocha": "^5.2.0",
-    "fortigate-autoscale-core": "github:fortinet/autoscale-core.git#3.0.0-alpha.1",
     "ftnt-devops-ci": "github:guardhao104/ftnt-devops-ci",
     "mocha": "^5.2.0",
-    "nyc": "^14.1.1",
-    "axios": "^0.19.0"
+    "nyc": "^14.1.1"
   },
   "bundledDependencies": [
     "fortigate-autoscale-core"
@@ -41,6 +42,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fortinet/fortigate-autoscale"
+    "url": "git+https://github.com/fortinet/fortigate-autoscale-gcp"
   }
 }
