@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    google = "2.11.0"
-    google-beta = "2.13"
+    google = ">=2.20.1"
+    google-beta = ">=2.20.1"
   }
 }
 provider "google" {
@@ -78,7 +78,7 @@ resource "google_compute_instance_template" "default" {
   # https://www.googleapis.com/compute/v1/projects/fortigcp-project-001/global/images/fortinet-fgtondemand-622-20191010-001-w-license
   # Create a new boot disk from an image
   disk {
-    source_image = "${var.fortigate_image}" //"projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license"    #Default 6.2.1 PAYG
+    source_image = "${var.fortigate_image}"
     auto_delete  = true
     boot         = true
   }
@@ -104,31 +104,34 @@ resource "google_compute_instance_template" "default" {
   }
 }
 resource "google_compute_health_check" "autohealing" {
-  provider = "google-beta"
   name                = "${var.cluster_name}-healthcheck-${random_string.random_name_post.result}"
   check_interval_sec  = 5
   timeout_sec         = 5
   healthy_threshold   = 2
   unhealthy_threshold = 10 # 50 seconds
 
-  http_health_check {
-    request_path = "/"
+  https_health_check {
     port         = "8443"
   }
 }
 
 resource "google_compute_region_instance_group_manager" "appserver" {
-
   name = "${var.cluster_name}-fortigate-autoscale-${random_string.random_name_post.result}"
-
   base_instance_name        = "${var.cluster_name}-instance-${random_string.random_name_post.result}"
-  instance_template         = "${google_compute_instance_template.default.self_link}"
   region                    = "us-central1"
   distribution_policy_zones = ["us-central1-a", "us-central1-b"]
 
   target_pools = ["${google_compute_target_pool.default.self_link}"]
   target_size  = 2
 
+    auto_healing_policies {
+    health_check      = google_compute_health_check.autohealing.self_link
+    initial_delay_sec = 500
+  }
+  version {
+    name = "Default"
+   instance_template         = "${google_compute_instance_template.default.self_link}"
+   }
   named_port {
     name = "custom"
     port = 8888
@@ -253,11 +256,10 @@ resource "google_compute_url_map" "default" {
 
 resource "google_compute_backend_service" "default" {
   name        = "${var.cluster_name}-backend-${random_string.random_name_post.result}"
-  port_name   = "http"
-  protocol    = "HTTP"
+  port_name   = "https"
+  protocol    = "HTTPS"
   timeout_sec = 10
-
-  health_checks = ["${google_compute_http_health_check.default.self_link}"]
+  health_checks = ["${google_compute_health_check.autohealing.self_link}"]
 }
 
 resource "google_compute_http_health_check" "default" {
