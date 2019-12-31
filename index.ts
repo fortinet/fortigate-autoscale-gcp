@@ -122,7 +122,7 @@ interface GCPBlobStorageItemDescriptor extends AutoScaleCore.BlobStorageItemDesc
     keyPrefix: string;
     fileName?: string;
 }
-class GCP extends CloudPlatform<
+export class GCP extends CloudPlatform<
         GCPPlatformRequest,
         GCPPlatformContext,
         Console,
@@ -315,7 +315,7 @@ class GCP extends CloudPlatform<
                 if (getDoc && getDoc._fieldsProto && getDoc._fieldsProto[recordId] &&
                     getDoc._fieldsProto[recordId].mapValue.fields
                     ) {
-                        var docData : AutoScaleCore.HealthCheck= {
+                        var docData: AutoScaleCore.HealthCheck = {
                         instanceId: recordId,
                         inSync: getDoc._fieldsProto[recordId].mapValue.fields.inSync.booleanValue,
                         healthy: getDoc._fieldsProto[recordId].mapValue.fields.healthy.booleanValue,
@@ -571,7 +571,7 @@ class GCP extends CloudPlatform<
 
 }
 
-class GCPAutoScaleHandler extends AutoscaleHandler<
+export class GCPAutoScaleHandler extends AutoscaleHandler<
 GCPPlatformRequest,
 GCPPlatformContext,
 Console,
@@ -605,7 +605,7 @@ GCP
             'asset-storage-key-prefix': process.env.ASSET_STORAGE_KEY_PREFIX,
             'fortigate-default-password': 'empty',
             'required-configset': 'empty',
-            'fortigate-autoscale-vpc-id': 'empty', // TODO:Pass VPC from Terraform ENV var and from VM fetch.
+            'fortigate-autoscale-vpc-id': 'empty',
             'settings-initialized': 'true',
             'project-id': PROJECT_ID,
             'trigger-url': TRIGGER_URL,

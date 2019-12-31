@@ -40,15 +40,7 @@ resource "google_compute_subnetwork" "public_subnet" {
   network       = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.public_subnet}"
 }
-
- resource "google_compute_subnetwork" "private_subnet" {
-   name          = "${var.cluster_name}-private-subnet-${random_string.random_name_post.result}"
-   region        = "${var.region}"
-   network       = "${google_compute_network.vpc_network.self_link}"
-   ip_cidr_range = "${var.protected_subnet}"
- }
-
-### Firewall Policy ###
+### Public VPC Firewall Policy ###
 #Default direction is ingress
 resource "google_compute_firewall" "firewall" {
   name    = "${var.cluster_name}-firewall-${random_string.random_name_post.result}"
@@ -61,6 +53,46 @@ resource "google_compute_firewall" "firewall" {
   source_ranges = ["${var.firewall_allowed_range}"]
 }
 
+ ### Protected VPC ###
+resource "google_compute_network" "protected_vpc_network" {
+  name                    = "${var.cluster_name}-protected-vpc-${random_string.random_name_post.result}"
+  auto_create_subnetworks = false
+}
+resource "google_compute_subnetwork" "protected_subnet" {
+  name          = "${var.cluster_name}-protected-subnet-${random_string.random_name_post.result}"
+  region        = "${var.region}"
+  network       = "${google_compute_network.protected_vpc_network.self_link}"
+  ip_cidr_range = "${var.protected_subnet}"
+
+}
+### Protected VPC Firewall Policy ###
+#Default direction is ingress
+resource "google_compute_firewall" "protected_firewall" {
+  name    = "${var.cluster_name}-protected-vpc-firewall-${random_string.random_name_post.result}"
+  network = "${google_compute_network.protected_vpc_network.name}"
+  priority = "100"
+  allow {
+    protocol = "all"
+  }
+
+  source_ranges = ["${var.protected_firewall_allowed_range}"]
+}
+### Cloud Nat ###
+# Allows for egress traffic on Protected Subnet
+resource "google_compute_router_nat" "cloud_nat" {
+  name                               = "${var.cluster_name}-cloud-nat-${random_string.random_name_post.result}"
+  router                             = "${google_compute_router.protected_subnet_router.name}"
+  region                             = "${var.region}"
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+
+}
+resource "google_compute_router" "protected_subnet_router" {
+  name    = "${var.cluster_name}-router-${random_string.random_name_post.result}"
+  region  = "${var.region}"
+  network = "${google_compute_network.protected_vpc_network.self_link}"
+}
+
 # Instance Template
 resource "google_compute_instance_template" "default" {
   depends_on  = ["google_cloudfunctions_function.function"]
@@ -69,13 +101,13 @@ resource "google_compute_instance_template" "default" {
 
   instance_description = "description assigned to instances"
   machine_type         = "${var.instance}" #"n1-standard-1"
-  can_ip_forward       = false
+  can_ip_forward       = true
 
   scheduling {
     automatic_restart   = true
     on_host_maintenance = "MIGRATE"
   }
-  # https://www.googleapis.com/compute/v1/projects/fortigcp-project-001/global/images/fortinet-fgtondemand-622-20191010-001-w-license
+
   # Create a new boot disk from an image
   disk {
     source_image = "${var.fortigate_image}"
@@ -84,9 +116,9 @@ resource "google_compute_instance_template" "default" {
   }
   # Logging Disk
   disk {
-    # Instance Templates reference disks by name, not self link
     auto_delete = true
     boot        = false
+    disk_size_gb = 30
   }
 
   network_interface {
@@ -95,25 +127,30 @@ resource "google_compute_instance_template" "default" {
       nat_ip = ""
     }
   }
+     network_interface {
+     subnetwork = "${google_compute_subnetwork.protected_subnet.self_link}"
+   }
   # Callback url and ssh key
   metadata = {
     user-data : "{'config-url':'${google_cloudfunctions_function.function.https_trigger_url}'}"
   }
+  # Email will be the service account used to call Cloud Functions
   service_account {
+    email = "${var.service_account}"
     scopes = ["userinfo-email", "compute-ro", "storage-ro"]
   }
 }
 resource "google_compute_health_check" "autohealing" {
-  name                = "${var.cluster_name}-healthcheck-${random_string.random_name_post.result}"
-  check_interval_sec  = 5
-  timeout_sec         = 5
-  healthy_threshold   = 2
-  unhealthy_threshold = 10 # 50 seconds
+   name                = "${var.cluster_name}-healthcheck-${random_string.random_name_post.result}"
+   check_interval_sec  = 5
+   timeout_sec         = 5
+   healthy_threshold   = 2
+   unhealthy_threshold = 10 # 50 seconds
 
-  https_health_check {
-    port         = "8443"
-  }
-}
+   https_health_check {
+     port         = "8443"
+   }
+ }
 
 resource "google_compute_region_instance_group_manager" "appserver" {
   name = "${var.cluster_name}-fortigate-autoscale-${random_string.random_name_post.result}"
@@ -124,18 +161,15 @@ resource "google_compute_region_instance_group_manager" "appserver" {
   target_pools = ["${google_compute_target_pool.default.self_link}"]
   target_size  = 2
 
-    auto_healing_policies {
-    health_check      = google_compute_health_check.autohealing.self_link
-    initial_delay_sec = 500
-  }
+     auto_healing_policies {
+     health_check      = google_compute_health_check.autohealing.self_link
+     initial_delay_sec = 500
+   }
   version {
     name = "Default"
    instance_template         = "${google_compute_instance_template.default.self_link}"
    }
-  named_port {
-    name = "custom"
-    port = 8888
-  }
+
 }
 ### Regional AutoScaler ###
 resource "google_compute_region_autoscaler" "default" {
@@ -167,15 +201,37 @@ resource "google_storage_bucket_object" "archive" {
   bucket = "${google_storage_bucket.bucket.name}"
   source = "${var.source_code_location}"
 }
+# Use rendered template file and upload as 'baseconfig'
 resource "google_storage_bucket_object" "baseconfig" {
   name   = "baseconfig"
   bucket = "${google_storage_bucket.bucket.name}"
-  source = "./assets/configset/baseconfig"
+  source = "./assets/configset/baseconfig.rendered"
+  depends_on = ["data.template_file.setup_secondary_ip"]
 }
+data "google_iam_policy" "editor" {
+  binding {
+    role = "roles/editor"
+    members = [
+      "serviceAccount:${var.service_account}",
+
+    ]
+  }
+}
+
+resource "google_cloudfunctions_function_iam_binding" "editor" {
+  project = "${var.project}"
+  region = "${var.region}"
+  cloud_function = "${google_cloudfunctions_function.function.name}"
+ # policy_data = "${data.google_iam_policy.editor.policy_data}"
+  role = "roles/editor"
+  members =  ["serviceAccount:${var.service_account}"]
+}
+
+
 resource "google_cloudfunctions_function" "function" {
   #If name is updated the Trigger URL will need to be updated too.
   name        = "${var.cluster_name}-${random_string.random_name_post.result}"
-  description = "My function"
+  description = "FortiGate AutoScaling Function"
   runtime     = "${var.nodejs_version}"
 
   available_memory_mb   = 1024
@@ -221,52 +277,31 @@ resource "google_cloudfunctions_function" "function" {
 }
 
 #### Load Balancer ####
-resource "google_compute_global_forwarding_rule" "default" {
-  name       = "${var.cluster_name}-global-rule-${random_string.random_name_post.result}"
-  target     = "${google_compute_target_http_proxy.default.self_link}"
-  port_range = "80"
-}
-
-resource "google_compute_target_http_proxy" "default" {
-  name        = "${var.cluster_name}-target-proxy-${random_string.random_name_post.result}"
-  description = "a description"
-  url_map     = "${google_compute_url_map.default.self_link}"
-}
-
-resource "google_compute_url_map" "default" {
-  name            = "${var.cluster_name}-url-map-target-proxy-${random_string.random_name_post.result}"
-  description     = ""
-  default_service = "${google_compute_backend_service.default.self_link}"
-
-  host_rule {
-    hosts        = ["mysite.com"]
-    path_matcher = "allpaths"
-  }
-
-  path_matcher {
-    name            = "allpaths"
-    default_service = "${google_compute_backend_service.default.self_link}"
-
-    path_rule {
-      paths   = ["/*"]
-      service = "${google_compute_backend_service.default.self_link}"
-    }
+data "template_file" "setup_secondary_ip" {
+  template = "${file("${path.module}/assets/configset/baseconfig")}"
+  vars = {
+    fgt_secondary_ip         = "${google_compute_forwarding_rule.default.ip_address}",
   }
 }
+resource "local_file" "setup_secondary_ip_render" {
+  content  = "${data.template_file.setup_secondary_ip.rendered}"
+  filename = "${path.module}/assets/configset/baseconfig.rendered"
+}
+resource "google_compute_forwarding_rule" "default" {
+  name   = "${var.cluster_name}-loadbalancer-rule-${random_string.random_name_post.result}"
+  region = "${var.region}"
 
-resource "google_compute_backend_service" "default" {
-  name        = "${var.cluster_name}-backend-${random_string.random_name_post.result}"
-  port_name   = "https"
-  protocol    = "HTTPS"
-  timeout_sec = 10
-  health_checks = ["${google_compute_health_check.autohealing.self_link}"]
+  load_balancing_scheme = "EXTERNAL"
+  target     = "${google_compute_target_pool.default.self_link}"
 }
 
 resource "google_compute_http_health_check" "default" {
   name               = "${var.cluster_name}-check-backend-${random_string.random_name_post.result}"
-  request_path       = "/"
-  check_interval_sec = 1
-  timeout_sec        = 1
+  #request_path       = "/"
+  check_interval_sec = 200
+  timeout_sec        = 150
+  unhealthy_threshold = 10
+  port = "8008"
 }
 
 
@@ -274,13 +309,9 @@ resource "google_compute_http_health_check" "default" {
 resource "google_compute_target_pool" "default" {
   name = "${var.cluster_name}-instancepool-${random_string.random_name_post.result}"
 
-  instances = [
-
-  ]
-
-  health_checks = [
-    "${google_compute_http_health_check.default.name}",
-  ]
+   health_checks = [
+     "${google_compute_http_health_check.default.name}",
+   ]
 }
 
 output "InstanceTemplate" {
@@ -294,9 +325,9 @@ output "google_compute_region_instance_group_manager" {
 output "Trigger_URL" {
   value = "${google_cloudfunctions_function.function.https_trigger_url}"
 }
-output "LoadBalancer_Ip_Address" {
-  value = "${google_compute_global_forwarding_rule.default.ip_address}"
-}
-output "Notes" {
-  value = "The FireStore Database must be deleted seperately"
+ output "LoadBalancer_Ip_Address" {
+   value = "${google_compute_forwarding_rule.default.ip_address}"
+ }
+output "Note" {
+  value = "The FireStore Database must be deleted separately"
 }

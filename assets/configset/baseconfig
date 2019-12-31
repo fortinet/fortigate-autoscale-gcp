@@ -1,9 +1,30 @@
-config system dns
-    unset primary
-    unset secondary
-end
 config system global
     set admin-sport {ADMIN_PORT}
+end
+config system probe-response
+    set mode http-probe
+end
+config system interface
+    edit "port1"
+    set allowaccess ping https http ssh fgfm
+    set secondary-IP enable
+    config secondaryip
+        edit 1
+        set ip "${fgt_secondary_ip}" 255.255.255.0
+        set allowaccess ping https http ssh fgfm probe-response
+        next
+    end
+end
+config system interface
+    edit "port2"
+        set vdom "root"
+        set mode dhcp
+        set type physical
+        set snmp-index 2
+        set mtu-override enable
+        set mtu 1460
+        set allowaccess ping https ssh fgfm
+    next
 end
 config system auto-scale
     set status enable

@@ -2,6 +2,11 @@ variable "project" {
   type    = "string"
   default = ""
 }
+variable "service_account" {
+  type = "string"
+  default = ""
+}
+
 variable "region" {
   type    = "string"
   default = "us-central1" #Default Region
@@ -15,6 +20,7 @@ variable "auth_key"{
   type = "string"
   default = "account.json"
 }
+
 # FortiGate Image
 variable "fortigate_image" {
   type = "string"
@@ -73,6 +79,11 @@ variable "firewall_allowed_range" {
   default = "0.0.0.0/0"
 }
 
+# Internal Protected VPC
+variable "protected_firewall_allowed_range" {
+  type = "string"
+  default = "0.0.0.0/0"
+}
 ####  AutoScaling Configuration #####
 variable "max_replicas" {
   type    = number

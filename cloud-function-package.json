@@ -6,10 +6,7 @@
   "directories": {
     "test": "tests"
   },
-  "files_to_deploy": [
-    "*.js",
-    "package.json"
-  ],
+
   "dependencies": {
     "@google-cloud/compute": "^1.1.2",
     "@google-cloud/firestore": "^2.2.6",
@@ -24,7 +21,6 @@
   "devDependencies": {
     "eslint": "^5.4.0",
     "eslint-plugin-mocha": "^5.2.0",
-
     "ftnt-devops-ci": "github:guardhao104/ftnt-devops-ci",
     "mocha": "^5.2.0",
     "nyc": "^14.1.1",
