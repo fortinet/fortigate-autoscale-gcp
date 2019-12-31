@@ -24,7 +24,7 @@ variable "auth_key"{
 # FortiGate Image
 variable "fortigate_image" {
   type = "string"
-  default = "projects/fortigcp-project-001/global/images/keithchoi-fgtondemand-621-20190723-001-w-license"    #Default 6.2.1 PAYG
+  default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-623-20191223-001-w-license"    #Default 6.2.3 PAYG
 }
 #Default n1-standard-1
 variable "instance" {

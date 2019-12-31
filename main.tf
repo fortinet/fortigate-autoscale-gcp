@@ -298,9 +298,9 @@ resource "google_compute_forwarding_rule" "default" {
 resource "google_compute_http_health_check" "default" {
   name               = "${var.cluster_name}-check-backend-${random_string.random_name_post.result}"
   #request_path       = "/"
-  check_interval_sec = 200
-  timeout_sec        = 150
-  unhealthy_threshold = 10
+  check_interval_sec = 2
+  timeout_sec        = 3
+  unhealthy_threshold = 3
   port = "8008"
 }
 
