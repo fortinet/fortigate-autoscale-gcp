@@ -20,16 +20,18 @@ variable "auth_key"{
   type = "string"
   default = "account.json"
 }
-
+# Zones to use with Instance Group
+data "google_compute_zones" "get_zones" {
+}
 # FortiGate Image
 variable "fortigate_image" {
   type = "string"
   default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-623-20191223-001-w-license"    #Default 6.2.3 PAYG
 }
-#Default n1-standard-1
+#Default
 variable "instance" {
   type    = "string"
-  default = "n1-standard-1"
+  default = "n1-standard-4"
 }
 #Must be lower-case for VPC
 variable "cluster_name" {
@@ -73,6 +75,10 @@ variable "public_subnet" {
 variable "protected_subnet" {
   type    = "string"
   default = "172.16.8.0/24"
+}
+variable "public_managment_subnet" {
+  type    = "string"
+  default = "172.16.16.0/24"
 }
 variable "firewall_allowed_range" {
   type = "string"

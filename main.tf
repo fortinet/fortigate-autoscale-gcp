@@ -52,6 +52,27 @@ resource "google_compute_firewall" "firewall" {
 
   source_ranges = ["${var.firewall_allowed_range}"]
 }
+### Public managment VPC ###
+resource "google_compute_network" "public_managment_vpc_network" {
+  name                    = "${var.cluster_name}-public-managment-vpc-${random_string.random_name_post.result}"
+  auto_create_subnetworks = false
+}
+resource "google_compute_subnetwork" "public_managment_subnet" {
+  name          = "${var.cluster_name}-public-managment-subnet-${random_string.random_name_post.result}"
+  region        = "${var.region}"
+  network       = "${google_compute_network.public_managment_vpc_network.self_link}"
+  ip_cidr_range = "${var.public_managment_subnet}"
+}
+### Public managment VPC Firewall Policy ###
+resource "google_compute_firewall" "public_managment_firewall" {
+  name    = "${var.cluster_name}-firewall-public-managment-${random_string.random_name_post.result}"
+  network = "${google_compute_network.public_managment_vpc_network.name}"
+  priority = "100"
+  allow {
+    protocol = "all"
+  }
+  source_ranges = ["${var.firewall_allowed_range}"]
+}
 
  ### Protected VPC ###
 resource "google_compute_network" "protected_vpc_network" {
@@ -97,9 +118,9 @@ resource "google_compute_router" "protected_subnet_router" {
 resource "google_compute_instance_template" "default" {
   depends_on  = ["google_cloudfunctions_function.function"]
   name        = "${var.cluster_name}-instance-template-${random_string.random_name_post.result}"
-  description = "This template is used to create app server instances."
+  description = "Fortigate AutoScale Cluster"
 
-  instance_description = "description assigned to instances"
+  instance_description = "FortiGate AutoScale Cluster"
   machine_type         = "${var.instance}" #"n1-standard-1"
   can_ip_forward       = true
 
@@ -120,14 +141,15 @@ resource "google_compute_instance_template" "default" {
     boot        = false
     disk_size_gb = 30
   }
-
+# Public facing managment port with public IP.
   network_interface {
-    subnetwork = "${google_compute_subnetwork.public_subnet.self_link}"
+    subnetwork = "${google_compute_subnetwork.public_managment_subnet.self_link}"
     access_config {
       nat_ip = ""
     }
   }
-     network_interface {
+   # Protected instances port
+      network_interface {
      subnetwork = "${google_compute_subnetwork.protected_subnet.self_link}"
    }
   # Callback url and ssh key
@@ -152,11 +174,13 @@ resource "google_compute_health_check" "autohealing" {
    }
  }
 
+
+
 resource "google_compute_region_instance_group_manager" "appserver" {
   name = "${var.cluster_name}-fortigate-autoscale-${random_string.random_name_post.result}"
   base_instance_name        = "${var.cluster_name}-instance-${random_string.random_name_post.result}"
-  region                    = "us-central1"
-  distribution_policy_zones = ["us-central1-a", "us-central1-b"]
+  region                    = "${var.region}"
+  distribution_policy_zones = "${data.google_compute_zones.get_zones.names}"
 
   target_pools = ["${google_compute_target_pool.default.self_link}"]
   target_size  = 2
@@ -276,11 +300,12 @@ resource "google_cloudfunctions_function" "function" {
   }
 }
 
-#### Load Balancer ####
+### External Load Balancer ###
 data "template_file" "setup_secondary_ip" {
   template = "${file("${path.module}/assets/configset/baseconfig")}"
   vars = {
     fgt_secondary_ip         = "${google_compute_forwarding_rule.default.ip_address}",
+    fgt_internalslb_ip       = "${google_compute_forwarding_rule.internal_load_balancer.ip_address}",
   }
 }
 resource "local_file" "setup_secondary_ip_render" {
@@ -297,9 +322,8 @@ resource "google_compute_forwarding_rule" "default" {
 
 resource "google_compute_http_health_check" "default" {
   name               = "${var.cluster_name}-check-backend-${random_string.random_name_post.result}"
-  #request_path       = "/"
-  check_interval_sec = 2
-  timeout_sec        = 3
+  check_interval_sec = 3
+  timeout_sec        = 2
   unhealthy_threshold = 3
   port = "8008"
 }
@@ -308,10 +332,39 @@ resource "google_compute_http_health_check" "default" {
 ### Target Pools ###
 resource "google_compute_target_pool" "default" {
   name = "${var.cluster_name}-instancepool-${random_string.random_name_post.result}"
+  session_affinity = "CLIENT_IP"
 
    health_checks = [
      "${google_compute_http_health_check.default.name}",
    ]
+}
+
+### Internal Load Balancer ###
+
+resource "google_compute_forwarding_rule" "internal_load_balancer" {
+  name   = "${var.cluster_name}-internal-slb-${random_string.random_name_post.result}"
+  region = "${var.region}"
+
+  load_balancing_scheme = "INTERNAL"
+  backend_service       = "${google_compute_region_backend_service.internal_load_balancer_backend.self_link}"
+  all_ports             = true
+  network               = "${google_compute_network.protected_vpc_network.self_link}"
+  subnetwork            = "${google_compute_subnetwork.protected_subnet.self_link}"
+}
+
+resource "google_compute_region_backend_service" "internal_load_balancer_backend" {
+  name          = "${var.cluster_name}-internal-slb-backend-${random_string.random_name_post.result}"
+  region        = "${var.region}"
+  health_checks = [google_compute_health_check.hc.self_link]
+}
+
+resource "google_compute_health_check" "hc" {
+  name               = "${var.cluster_name}-internal-slb-healthcheck-${random_string.random_name_post.result}"
+  check_interval_sec = 3
+  timeout_sec        = 2
+  tcp_health_check {
+    port = "80"
+  }
 }
 
 output "InstanceTemplate" {
