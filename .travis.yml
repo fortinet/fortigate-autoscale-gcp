@@ -3,12 +3,14 @@ node_js: 12.13.1
 script:
   - npm install
   - npm run setup
+  - git describe
 deploy:
   provider: releases
   file_glob: true
   api_key:
     secure: GdzlvpZA0vudgaRHUVLOrew1DVTiZiTl3fYBBkSrvm6GkDHKo0C3jWns7slb6cGgk3HB4vxNVbCxZtjwHWr66RiOAFeu4W2ennd3gujhSIMNQx8nVADM7TrEO1oBe0BWDYBL43daSu/NC/GsW29NYASI0bFi+UvXSe/G4KonR0+tfiSVI/n9WdRp4qYS3pIM2XxwwCzHe8UurwprxXtD5MDtnyQ5xfsJEFSQkXNS1qaOp58qpnefiXOjg7iIQG4rgjwQNC2a0ZYiDi8lyKW66itUc8rtrk2Z+cugsvGnwta1RRX7njdh+3BFBLRhWEIsemvoF76tFPanbSKn7+WxPUCL6ItMqqekCsjMYt/pYWLAjsCiwrgmlg+SAJGyQ8Jd35vG0CXmG6kFNmk7BPcWPJnyfU9qUS1m6WyxczlY2M5xi59y4JjG5JUNCQxiTSLxAWMTM/sRmPBWQYS/PbIy8dwuXVTD25baczhe6Jv1ovicoEZS7VtYMofbleTPSk6FjzyNd+gLNQJyA7zL3q+ZUjGP6hcVQe2FiF9k6nZ2xjuOeuOIsjVH5R4GTI7DtSY/2ZytrA834XQs+txa1i/lZiO09aj94mEHQSQkxko9u4uylCrRxAElKobBXh1bM5IFGEE1AGi8CNYi/DmHHgfOliT28yCh3iRikSGIYiQryxY=
-  file: dist/*
+    file: dist/*
+    skip_cleanup: true
   on:
     repo: fortinet/fortigate-autoscale-gcp
     tags: true
