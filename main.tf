@@ -217,7 +217,7 @@ resource "google_compute_region_autoscaler" "default" {
 
 # No Capital Letters allowed in the bucket name
 resource "google_storage_bucket" "bucket" {
-  name = "foritgate-autoscale-${random_string.random_name_post.result}"
+  name = "fortigate-autoscale-${random_string.random_name_post.result}"
 }
 
 resource "google_storage_bucket_object" "archive" {
