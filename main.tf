@@ -246,8 +246,8 @@ resource "google_cloudfunctions_function_iam_member" "invoker" {
   project = "${var.project}"
   region = "${var.region}"
   cloud_function = "${google_cloudfunctions_function.function.name}"
- # policy_data = "${data.google_iam_policy.editor.policy_data}"
   role   = "roles/cloudfunctions.invoker"
+  # use AllUsers since config-url does not support IAM.
   member = "allUsers"
 }
 
