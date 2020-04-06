@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    google = ">=2.20.1"
-    google-beta = ">=2.20.1"
+    google = ">=3.16.0"
+    google-beta = ">=3.15.0"
   }
 }
 provider "google" {
@@ -159,7 +159,7 @@ resource "google_compute_instance_template" "default" {
   # Email will be the service account used to call Cloud Functions
   service_account {
     email = "${var.service_account}"
-    scopes = ["userinfo-email", "compute-ro", "storage-ro"]
+    scopes = []
   }
 }
 resource "google_compute_health_check" "autohealing" {
@@ -242,13 +242,13 @@ data "google_iam_policy" "editor" {
   }
 }
 
-resource "google_cloudfunctions_function_iam_binding" "editor" {
+resource "google_cloudfunctions_function_iam_member" "invoker" {
   project = "${var.project}"
   region = "${var.region}"
   cloud_function = "${google_cloudfunctions_function.function.name}"
- # policy_data = "${data.google_iam_policy.editor.policy_data}"
-  role = "roles/editor"
-  members =  ["serviceAccount:${var.service_account}"]
+  role   = "roles/cloudfunctions.invoker"
+  # use AllUsers since config-url does not support IAM.
+  member = "allUsers"
 }
 
 
@@ -257,7 +257,7 @@ resource "google_cloudfunctions_function" "function" {
   name        = "${var.cluster_name}-${random_string.random_name_post.result}"
   description = "FortiGate AutoScaling Function"
   runtime     = "${var.nodejs_version}"
-
+  ingress_settings = "ALLOW_INTERNAL_ONLY"
   available_memory_mb   = 1024
   source_archive_bucket = "${google_storage_bucket.bucket.name}"
   source_archive_object = "${google_storage_bucket_object.archive.name}"
