@@ -112,16 +112,14 @@ variable "target_size" {
   type    = number
   default = 2
 }
-
-
 #### Optional Configurations ####
 #Cloud Function timeout. In seconds
 variable "SCRIPT_TIMEOUT" {
   type    = number
   default = 500
 }
-# Time before a master election times out. In seconds
-variable "MASTER_ELECTION_TIMEOUT" {
+# Time before an election times out. In seconds
+variable "PRIMARY_ELECTION_TIMEOUT" {
   type    = number
   default = 400
 }

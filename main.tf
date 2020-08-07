@@ -279,7 +279,7 @@ resource "google_cloudfunctions_function" "function" {
       MASTER_SCALING_GROUP_NAME  = "${var.cluster_name}-${random_string.random_name_post.result}",
       HEART_BEAT_LOSS_COUNT      = "${var.HEART_BEAT_LOSS_COUNT}",
       SCRIPT_TIMEOUT             = "${var.SCRIPT_TIMEOUT}"
-      MASTER_ELECTION_TIMEOUT    = "${var.MASTER_ELECTION_TIMEOUT}",
+      MASTER_ELECTION_TIMEOUT    = "${var.PRIMARY_ELECTION_TIMEOUT}",
       REQUIRED_CONFIG_SET        = "empty",
       UNIQUE_ID                  = "empty",
       CUSTOM_ID                  = "empty",
