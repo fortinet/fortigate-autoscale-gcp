@@ -276,9 +276,11 @@ resource "google_cloudfunctions_function" "function" {
       RESOURCE_TAG_PREFIX        = "${var.cluster_name}"
       PAYG_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
       BYOL_SCALING_GROUP_NAME    = "${var.cluster_name}-${random_string.random_name_post.result}",
+      #TODO: change value toMAIN once core logic is changed.
       MASTER_SCALING_GROUP_NAME  = "${var.cluster_name}-${random_string.random_name_post.result}",
       HEART_BEAT_LOSS_COUNT      = "${var.HEART_BEAT_LOSS_COUNT}",
       SCRIPT_TIMEOUT             = "${var.SCRIPT_TIMEOUT}"
+       #TODO: change value toMAIN once core logic is changed.
       MASTER_ELECTION_TIMEOUT    = "${var.PRIMARY_ELECTION_TIMEOUT}",
       REQUIRED_CONFIG_SET        = "empty",
       UNIQUE_ID                  = "empty",
@@ -293,6 +295,7 @@ resource "google_cloudfunctions_function" "function" {
       ENABLE_VM_INFO_CACHE       = "false",
       FORTIGATE_ADMIN_PORT       = "${var.FORTIGATE_ADMIN_PORT}",
       FORTIGATE_SYNC_INTERFACE   = "port1",
+       #TODO: change value toMAIN once core logic is changed.
       MASTER_ELECTION_NO_WAIT    = "true",
       HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
       HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}",
