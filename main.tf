@@ -303,6 +303,7 @@ resource "google_cloudfunctions_function" "function" {
       HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
       HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}",
       FORTIGATE_AUTOSCALE_VPC_ID = "empty",
+      ELASTIC_IP                 = google_compute_address.static.address
   }
 }
 
