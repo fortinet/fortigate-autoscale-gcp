@@ -40,6 +40,9 @@ resource "google_compute_subnetwork" "public_subnet" {
   network       = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.public_subnet}"
 }
+resource "google_compute_address" "static" {
+  name = "${var.cluster_name}-static-ip-${random_string.random_name_post.result}"
+}
 ### Public VPC Firewall Policy ###
 #Default direction is ingress
 resource "google_compute_firewall" "firewall" {
