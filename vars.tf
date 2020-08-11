@@ -118,7 +118,7 @@ variable "SCRIPT_TIMEOUT" {
   type    = number
   default = 500
 }
-# Time before an election times out. In seconds
+# Time before a PRIMARY times out. In seconds
 variable "PRIMARY_ELECTION_TIMEOUT" {
   type    = number
   default = 400
