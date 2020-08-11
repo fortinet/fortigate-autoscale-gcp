@@ -14,7 +14,8 @@ const {
         FORTIGATE_PSK_SECRET,
         TRIGGER_URL,
         PROJECT_ID,
-        SCRIPT_TIMEOUT
+        SCRIPT_TIMEOUT,
+        REGION
     } = process.env,
     SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now();
 
@@ -364,9 +365,16 @@ export class GCP extends CloudPlatform<
         console.log('Removed AutoScale Record');
         return true;
     }
-
+    public async attachEIPtoMaster() {
+        let request = {
+            project: PROJECT_ID,
+            region: REGION
+        };
+        this.compute.addresses.get();
+    }
     public async finalizeMasterElection(): Promise<boolean> {
         console.log('Finalizing Master Election');
+
         const autoScaleRecordUpdate = this.fireStoreClient;
         const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
         try {
@@ -649,8 +657,7 @@ export class GCPAutoScaleHandler extends AutoscaleHandler<
             'fortigate-sync-interface': process.env.FORTIGATE_SYNC_INTERFACE,
             'master-election-no-wait': process.env.MASTER_ELECTION_NO_WAIT,
             'heartbeat-interval': process.env.HEARTBEAT_INTERVAL,
-            'heart-beat-delay-allowance': process.env.HEART_BEAT_DELAY_ALLOWANCE,
-            'elastic-ip': process.env.ELASTIC_IP
+            'heart-beat-delay-allowance': process.env.HEART_BEAT_DELAY_ALLOWANCE
         };
         const db = await getTables();
         const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/SETTINGS`);
@@ -902,7 +909,7 @@ export class GCPAutoScaleHandler extends AutoscaleHandler<
     }
 }
 
-exports.main = async function (req, res, callback) {
+exports.main = async function(req, res, callback) {
     if (FIRESTORE_DATABASE && ASSET_STORAGE_NAME && FORTIGATE_PSK_SECRET && TRIGGER_URL && PROJECT_ID) {
         let context;
         const logger = new AutoScaleCore.Functions.DefaultLogger(console);

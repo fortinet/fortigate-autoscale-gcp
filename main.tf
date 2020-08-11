@@ -270,6 +270,7 @@ resource "google_cloudfunctions_function" "function" {
 
   environment_variables = {
       PROJECT_ID                 = "${var.project}" #Used by Bucket
+      REGION                     = "${var.region}"
       FIRESTORE_DATABASE         = "${var.cluster_name}-fortigateautoscale-${random_string.random_name_post.result}",
       ASSET_STORAGE_NAME         = "${google_storage_bucket.bucket.name}",
       ASSET_STORAGE_KEY_PREFIX   = "empty",
