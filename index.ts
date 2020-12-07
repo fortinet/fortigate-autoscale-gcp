@@ -7,6 +7,7 @@ import { CloudPlatform, LicenseRecord } from 'fortigate-autoscale-core';
 import { AutoscaleHandler } from 'fortigate-autoscale-core/autoscale-handler';
 import * as Platform from 'fortigate-autoscale-core/cloud-platform';
 import { URL } from 'url';
+import { GoogleAuth } from 'google-auth-library';
 
 const {
         FIRESTORE_DATABASE,
@@ -15,9 +16,11 @@ const {
         TRIGGER_URL,
         PROJECT_ID,
         SCRIPT_TIMEOUT,
-        REGION
+        REGION,
+        ELASTIC_IP_NAME //TODO: can move to DB item once core is updated.
     } = process.env,
-    SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now();
+    SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now(),
+    ELASTIC_IP_NIC = 'nic0'; // GCP will only use nic0 at the moment. May change in the future.
 
 namespace GCPPlatform {
     export interface Filter {
@@ -47,6 +50,18 @@ namespace GCPPlatform {
         PublicIpAddress: string;
         SubnetId: string;
         VpcId: string;
+        zone?: string;
+    }
+    export interface MasterRecordLike {
+        id?: string;
+        ip: string;
+        instanceId: string;
+        scalingGroupName: string;
+        subnetId: string;
+        voteEndTime: number;
+        voteState?: string;
+        vpcId: string;
+        zone?: string; // Needed to attach EIP.
     }
 }
 interface GCPVirtualMachineDescriptor extends AutoScaleCore.VirtualMachineLike, GCPPlatform.Instance {
@@ -55,6 +70,7 @@ interface GCPVirtualMachineDescriptor extends AutoScaleCore.VirtualMachineLike, 
     PublicIpAddress: string;
     SubnetId: string;
     VpcId: string;
+    zone?: string;
 }
 
 export interface GCPNetworkInterface extends AutoScaleCore.NetworkInterfaceLike, GCPPlatform.NetworkInterface {}
@@ -365,16 +381,74 @@ export class GCP extends CloudPlatform<
         console.log('Removed AutoScale Record');
         return true;
     }
-    public async attachEIPtoMaster() {
-        let request = {
-            project: PROJECT_ID,
-            region: REGION
-        };
-        this.compute.addresses.get();
+    //
+
+    public async attachEIPtoMaster(instanceId, instanceZone) {
+        // Won't break the cluster if there is no EIP but should report as an error.
+        if (!instanceId || !instanceZone) {
+            console.error(
+                `Error in Attaching EIP to primary instance: IntanceId and InstanceZone must be specified: instanceId: ${instanceId} instanceZone: ${instanceZone}`
+            );
+        }
+        console.log('Updating Master Instance External IP');
+        console.log(
+            `InstanceID data passed to the attachEIPtoMaster Function: ${instanceId} instanceZone: ${instanceZone}`
+        );
+        console.log(`instance Master data: ${this._masterRecord}`);
+        // Google's auth client should be able to determine whether you are running locally, or in a cloud function.
+        // We use it here since we need to use their api, no the Node library to change addressconfigs.
+        const auth = new GoogleAuth({
+            scopes: 'https://www.googleapis.com/auth/cloud-platform'
+        });
+        const client = await auth.getClient();
+
+        const getAddressURL = `https://compute.googleapis.com/compute/v1/projects/${PROJECT_ID}/regions/${REGION}/addresses/${ELASTIC_IP_NAME}`;
+        const deleteAddressConfigURL = `https://compute.googleapis.com/compute/v1/projects/${PROJECT_ID}/zones/${instanceZone}/instances/${instanceId}/deleteAccessConfig`;
+        const addAddressConfigURL = `https://compute.googleapis.com/compute/v1/projects/${PROJECT_ID}/zones/${instanceZone}/instances/${instanceId}/addAccessConfig/`;
+        const getAddressReq: any = await client.request({
+            method: 'GET',
+            url: getAddressURL
+        });
+        // First must delete the ephemeral address on a host.
+        // Then we can add the EIP(or static address in the case of GCP)
+        try {
+            const deleteReq = await client.request({
+                method: 'POST',
+                url: deleteAddressConfigURL,
+                params: {
+                    networkInterface: ELASTIC_IP_NAME,
+                    accessConfig: 'external-nat'
+                }
+            });
+            // Troubleshooting data:
+            console.log(`Delete req ${JSON.stringify(deleteReq.data)}`);
+        } catch (err) {
+            console.log(`Error in delete request ${err}`);
+        }
+        // Add the EIP to the new master.
+        try {
+            const addAddressReq = await client.request({
+                method: 'POST',
+                url: addAddressConfigURL,
+                params: {
+                    networkInterface: 'nic0'
+                },
+                data: {
+                    type: 'EXTERNAL',
+                    name: ELASTIC_IP_NAME,
+                    natIP: getAddressReq.data.address,
+                    networkTier: getAddressReq.data.networkTier, // 'PREMIUM'
+                    kind: getAddressReq.data.kind // 'compute#accessConfig'
+                }
+            });
+            console.log(addAddressReq.data);
+        } catch (err) {
+            console.log(`Error in attaching EIP ${err}`);
+        }
     }
     public async finalizeMasterElection(): Promise<boolean> {
-        console.log('Finalizing Master Election');
-
+        console.log('Finalizing Primary Election');
+        let masterRecord = this._masterRecord; // Fetch Master record.
         const autoScaleRecordUpdate = this.fireStoreClient;
         const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
         try {
@@ -382,6 +456,9 @@ export class GCP extends CloudPlatform<
             await document.update({
                 ['masterRecord.' + 'VoteState']: 'done'
             });
+            console.log(`Attaching static address to Primary Instance`);
+            await this.attachEIPtoMaster(masterRecord.id, masterRecord.zone);
+            console.log(`Primary Election Finished. ${masterRecord.id}, Zone: ${masterRecord.zone}`);
         } catch (err) {
             console.log(`Error in finalizeMasterElection could not update Master record. ${err}`);
         }
@@ -455,7 +532,8 @@ export class GCP extends CloudPlatform<
                         PrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
                         primaryPrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
                         SubnetId: vmData.metadata.networkInterfaces[0].subnetwork,
-                        virtualNetworkId: 'empty'
+                        virtualNetworkId: 'empty',
+                        zone: this.gcpSplitURL(vmData.metadata.zone)
                     };
                     return vmReturn;
                 }

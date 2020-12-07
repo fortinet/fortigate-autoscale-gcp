@@ -304,7 +304,8 @@ resource "google_cloudfunctions_function" "function" {
       HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
       HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}",
       FORTIGATE_AUTOSCALE_VPC_ID = "empty",
-      ELASTIC_IP                 = google_compute_address.static.address
+      ELASTIC_IP                 = google_compute_address.static.name
+
   }
 }
 
@@ -359,6 +360,9 @@ resource "google_compute_forwarding_rule" "internal_load_balancer" {
   network               = "${google_compute_network.protected_vpc_network.self_link}"
   subnetwork            = "${google_compute_subnetwork.protected_subnet.self_link}"
 }
+resource "google_compute_address" "master_external_address" {
+  name = "${var.cluster_name}-external-address-${random_string.random_name_post.result}"
+}
 
 resource "google_compute_region_backend_service" "internal_load_balancer_backend" {
   name          = "${var.cluster_name}-internal-slb-backend-${random_string.random_name_post.result}"
@@ -391,4 +395,10 @@ output "Trigger_URL" {
  }
 output "Note" {
   value = "The FireStore Database must be deleted separately"
+}
+output "Master_Static_Address" {
+  value = "${google_compute_address.static.address}"
+}
+output "Master_Static_Name" {
+  value = "${google_compute_address.static.name}"
 }
