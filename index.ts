@@ -52,17 +52,6 @@ namespace GCPPlatform {
         VpcId: string;
         zone?: string;
     }
-    export interface MasterRecordLike {
-        id?: string;
-        ip: string;
-        instanceId: string;
-        scalingGroupName: string;
-        subnetId: string;
-        voteEndTime: number;
-        voteState?: string;
-        vpcId: string;
-        zone?: string; // Needed to attach EIP.
-    }
 }
 interface GCPVirtualMachineDescriptor extends AutoScaleCore.VirtualMachineLike, GCPPlatform.Instance {
     InstanceId: string;
