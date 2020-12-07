@@ -437,8 +437,11 @@ export class GCP extends CloudPlatform<
     }
     public async finalizeMasterElection(): Promise<boolean> {
         console.log('Finalizing Primary Election');
+
         let masterRecord = this._masterRecord; // Fetch Master record.
         const autoScaleRecordUpdate = this.fireStoreClient;
+        console.log(`Primary Election Finished. ${masterRecord.instanceId}, Zone: ${masterRecord.zone}`);
+
         const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
         try {
             // Updates a nested object without removing the entire object.
@@ -446,8 +449,7 @@ export class GCP extends CloudPlatform<
                 ['masterRecord.' + 'VoteState']: 'done'
             });
             console.log(`Attaching static address to Primary Instance`);
-            await this.attachEIPtoMaster(masterRecord.id, masterRecord.zone);
-            console.log(`Primary Election Finished. ${masterRecord.id}, Zone: ${masterRecord.zone}`);
+            await this.attachEIPtoMaster(masterRecord.instanceId, masterRecord.zone);
         } catch (err) {
             console.log(`Error in finalizeMasterElection could not update Master record. ${err}`);
         }
