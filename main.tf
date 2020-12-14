@@ -397,7 +397,7 @@ output "Trigger_URL" {
 output "Note" {
   value = "The FireStore Database must be deleted separately"
 }
-output "Master_Static_Address" {
+output "Primary_Static_Address" {
   value = "${google_compute_address.static.address}"
 }
 output "Primary_static_address_name" {
