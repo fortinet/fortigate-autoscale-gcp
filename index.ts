@@ -383,7 +383,7 @@ export class GCP extends CloudPlatform<
         console.log(
             `InstanceID data passed to the attachEIPtoMaster Function: ${instanceId} instanceZone: ${instanceZone}`
         );
-        console.log(`instance Master data: ${this._masterRecord}`);
+
         // Google's auth client should be able to determine whether you are running locally, or in a cloud function.
         // We use it here since we need to use their api, no the Node library to change addressconfigs.
         const auth = new GoogleAuth({
@@ -405,7 +405,7 @@ export class GCP extends CloudPlatform<
                 method: 'POST',
                 url: deleteAddressConfigURL,
                 params: {
-                    networkInterface: ELASTIC_IP_NAME,
+                    networkInterface: ELASTIC_IP_NIC,
                     accessConfig: 'external-nat'
                 }
             });
@@ -420,7 +420,7 @@ export class GCP extends CloudPlatform<
                 method: 'POST',
                 url: addAddressConfigURL,
                 params: {
-                    networkInterface: 'nic0'
+                    networkInterface: ELASTIC_IP_NIC
                 },
                 data: {
                     type: 'EXTERNAL',
@@ -435,22 +435,60 @@ export class GCP extends CloudPlatform<
             console.log(`Error in attaching EIP ${err}`);
         }
     }
+    public async getInstanceInfo(instanceId) {
+        // Primary purpose here is to return the zone. Which is not included in the older core.
+        let compute = new Compute();
+        try {
+            console.log('Fetching VMs');
+            const [vms] = await compute.getVMs();
+
+            for (let vmData of vms) {
+                if (vmData.metadata.id === instanceId) {
+                    console.log('VM data' + JSON.stringify(vmData.metadata));
+                    return vmData.metadata;
+                }
+            }
+        } catch (err) {
+            console.log(err);
+            throw err;
+        }
+    }
     public async finalizeMasterElection(): Promise<boolean> {
         console.log('Finalizing Primary Election');
-
-        let masterRecord = this._masterRecord; // Fetch Master record.
+        // this._masterRecord is undefined at this point and doesn't contain Zone property.
+        // As a temporary fix we must grab the instanceId that has been set in firestore then
+        // lookup the data and retrieve the instaceId/zone etc.
+        // TODO: update when changing core.
         const autoScaleRecordUpdate = this.fireStoreClient;
-        console.log(`Primary Election ${this._masterRecord.instanceId}, Zone: ${this._masterRecord.zone}`);
         const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
+        let getDoc;
+        try {
+            getDoc = await document.get();
+        }
+      catch (err) {
+            console.log(`Error in getting Primary record ${err}`);
+        }
+        if (
+            getDoc?._fieldsProto?.masterRecord?.mapValue?.fields?.InstanceId
+        ) {
+            const primaryInstanceId = getDoc._fieldsProto.masterRecord.mapValue.fields.InstanceId.stringValue;
+            // Includes all info needed to change the EIP, but we really just need the zone.
+            const resourceInfo = await this.getInstanceInfo(primaryInstanceId)
+            console.log(`Primary Election ${primaryInstanceId}, Zone: ${this.gcpSplitURL(resourceInfo.zone)}`);
+            console.log(`Attaching static address to Primary Instance`);
+            // Grab the zone from the GCP url and send to attachEIP
+            await this.attachEIPtoMaster(primaryInstanceId, this.gcpSplitURL(resourceInfo.zone));
+        }
+
         try {
             // Updates a nested object without removing the entire object.
             await document.update({
                 ['masterRecord.' + 'VoteState']: 'done'
             });
-            console.log(`Attaching static address to Primary Instance`);
-            await this.attachEIPtoMaster(this._masterRecord.instanceId, this._masterRecord.zone);
+
+
         } catch (err) {
-            console.log(`Error in finalizeMasterElection could not update Master record. ${err}`);
+            console.log(`Error in finializing Primary record in election could not update Primary record. ${err}`);
         }
         return true;
     }

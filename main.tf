@@ -220,6 +220,7 @@ resource "google_compute_region_autoscaler" "default" {
 
 # No Capital Letters allowed in the bucket name
 resource "google_storage_bucket" "bucket" {
+
   name = "fortigate-autoscale-${random_string.random_name_post.result}"
 }
 
@@ -304,7 +305,7 @@ resource "google_cloudfunctions_function" "function" {
       HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
       HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}",
       FORTIGATE_AUTOSCALE_VPC_ID = "empty",
-      ELASTIC_IP                 = google_compute_address.static.name
+      ELASTIC_IP_NAME            = google_compute_address.static.name
 
   }
 }
@@ -399,6 +400,6 @@ output "Note" {
 output "Master_Static_Address" {
   value = "${google_compute_address.static.address}"
 }
-output "Master_Static_Name" {
+output "Primary_static_address_name" {
   value = "${google_compute_address.static.name}"
 }
