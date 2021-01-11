@@ -414,7 +414,7 @@ export class GCP extends CloudPlatform<
         } catch (err) {
             console.log(`Error in delete request ${err}`);
         }
-        // Add the EIP to the new master.
+        // Add the EIP to the new primary.
         try {
             const addAddressReq = await client.request({
                 method: 'POST',
