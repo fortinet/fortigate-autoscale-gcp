@@ -8,6 +8,7 @@ import { AutoscaleHandler } from 'fortigate-autoscale-core/autoscale-handler';
 import * as Platform from 'fortigate-autoscale-core/cloud-platform';
 import { URL } from 'url';
 import { GoogleAuth } from 'google-auth-library';
+import { sleep } from 'fortigate-autoscale-core/core-functions';
 
 const {
         FIRESTORE_DATABASE,
@@ -17,6 +18,7 @@ const {
         PROJECT_ID,
         SCRIPT_TIMEOUT,
         REGION,
+        ATTACH_EIP_TIME_LIMIT,
         ELASTIC_IP_NAME //TODO: can move to DB item once core is updated.
     } = process.env,
     SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now(),
@@ -401,7 +403,7 @@ export class GCP extends CloudPlatform<
         // First must delete the ephemeral address on a host.
         // Then we can add the EIP(or static address in the case of GCP)
         try {
-            const deleteReq = await client.request({
+            const deleteReq:any = await client.request({
                 method: 'POST',
                 url: deleteAddressConfigURL,
                 params: {
@@ -410,7 +412,29 @@ export class GCP extends CloudPlatform<
                 }
             });
             // Troubleshooting data:
-            console.log(`Delete req ${JSON.stringify(deleteReq.data)}`);
+            console.log(`Delete EIP request ${JSON.stringify(deleteReq.data)}`);
+            // If the request has been queued check the VM for the current accessConfig
+            if(deleteReq.data.status !== 'SUCCEEDED'){
+                console.warn(`Delete has queued. Waiting for it to finish before adding Static IP`)
+                let running = true;
+                let startTime = Date.now();
+                const attachEIPTimeLimit = parseInt(ATTACH_EIP_TIME_LIMIT) || 45000 // Default 45 seconds max.
+                while(running === true && startTime + attachEIPTimeLimit > Date.now()){
+                    const getInstanceInfo = await this.getInstanceInfo(instanceId)
+                        // Check if there is an access config
+                        // If there isn't then we are done running and can continue
+                        if(!getInstanceInfo.networkInterfaces[0].accessConfigs){
+                            running = false;
+                        }
+                        else{
+                            console.log(`Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${Date.now() - startTime}`)
+                            // sleep for 2 seconds.
+                           await sleep(2000);
+                        }
+
+                    }
+                }
+
         } catch (err) {
             console.log(`Error in delete request ${err}`);
         }

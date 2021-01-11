@@ -234,7 +234,7 @@ resource "google_storage_bucket_object" "baseconfig" {
   name   = "baseconfig"
   bucket = "${google_storage_bucket.bucket.name}"
   source = "./assets/configset/baseconfig.rendered"
-  depends_on = ["data.template_file.setup_secondary_ip"]
+  depends_on = ["local_file.setup_secondary_ip_render"]
 }
 data "google_iam_policy" "editor" {
   binding {
@@ -305,7 +305,8 @@ resource "google_cloudfunctions_function" "function" {
       HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
       HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}",
       FORTIGATE_AUTOSCALE_VPC_ID = "empty",
-      ELASTIC_IP_NAME            = google_compute_address.static.name
+      ELASTIC_IP_NAME            = google_compute_address.static.name,
+      ATTACH_EIP_TIME_LIMIT      = "45000"
 
   }
 }
@@ -321,6 +322,7 @@ data "template_file" "setup_secondary_ip" {
 resource "local_file" "setup_secondary_ip_render" {
   content  = "${data.template_file.setup_secondary_ip.rendered}"
   filename = "${path.module}/assets/configset/baseconfig.rendered"
+  depends_on = ["data.template_file.setup_secondary_ip"]
 }
 resource "google_compute_forwarding_rule" "default" {
   name   = "${var.cluster_name}-loadbalancer-rule-${random_string.random_name_post.result}"
