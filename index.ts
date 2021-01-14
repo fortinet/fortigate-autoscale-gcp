@@ -54,6 +54,24 @@ namespace GCPPlatform {
         VpcId: string;
         zone?: string;
     }
+    export interface DeleteRequest {
+        data: Data;
+      }
+      export interface Data {
+        id: string;
+        name: string;
+        zone: string;
+        operationType?: string;
+        targetLink?: string;
+        targetId?: string;
+        status?: string;
+        user?: string;
+        progress?: number;
+        insertTime?: string;
+        startTime?: string;
+        selfLink: string;
+        kind?: string;
+      }
 }
 interface GCPVirtualMachineDescriptor extends AutoScaleCore.VirtualMachineLike, GCPPlatform.Instance {
     InstanceId: string;
@@ -403,7 +421,7 @@ export class GCP extends CloudPlatform<
         // First must delete the ephemeral address on a host.
         // Then we can add the EIP(or static address in the case of GCP)
         try {
-            const deleteReq:any = await client.request({
+            const deleteReq: GCPPlatform.DeleteRequest = await client.request({
                 method: 'POST',
                 url: deleteAddressConfigURL,
                 params: {
