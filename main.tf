@@ -20,7 +20,7 @@ provider "google-beta" {
 resource "random_string" "psk" {
   length           = 16
   special          = true
-  override_special = ""
+  override_special = "![]{}"
 }
 #Random 5 char string appended to the end of each name to avoid conflicts
 resource "random_string" "random_name_post" {
