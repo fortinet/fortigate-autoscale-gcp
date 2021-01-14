@@ -18,11 +18,11 @@ const {
         PROJECT_ID,
         SCRIPT_TIMEOUT,
         REGION,
-        ATTACH_EIP_TIME_LIMIT,
         ELASTIC_IP_NAME //TODO: can move to DB item once core is updated.
     } = process.env,
     SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now(),
-    ELASTIC_IP_NIC = 'nic0'; // GCP will only use nic0 at the moment. May change in the future.
+    ELASTIC_IP_NIC = 'nic0', // GCP will only use nic0 at the moment. May change in the future.
+    ATTACH_EIP_TIME_LIMIT = 45000
 
 namespace GCPPlatform {
     export interface Filter {
@@ -418,7 +418,7 @@ export class GCP extends CloudPlatform<
                 console.warn(`Delete has queued. Waiting for it to finish before adding Static IP`)
                 let running = true;
                 let startTime = Date.now();
-                const attachEIPTimeLimit = parseInt(ATTACH_EIP_TIME_LIMIT) || 45000 // Default 45 seconds max.
+                const attachEIPTimeLimit = ATTACH_EIP_TIME_LIMIT // Default 45 seconds max.
                 while(running === true && startTime + attachEIPTimeLimit > Date.now()){
                     const getInstanceInfo = await this.getInstanceInfo(instanceId)
                         // Check if there is an access config
