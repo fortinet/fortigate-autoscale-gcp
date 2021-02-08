@@ -1,23 +1,28 @@
 import { Tables } from 'fortigate-autoscale-core/db-definitions';
-import {Firestore, FieldValue} from '@google-cloud/firestore';
+import { Firestore, FieldValue } from '@google-cloud/firestore';
 import * as AutoScaleCore from 'fortigate-autoscale-core';
 import Compute from '@google-cloud/compute';
-import {Storage} from '@google-cloud/storage';
+import { Storage } from '@google-cloud/storage';
 import { CloudPlatform, LicenseRecord } from 'fortigate-autoscale-core';
-import {AutoscaleHandler} from 'fortigate-autoscale-core/autoscale-handler';
+import { AutoscaleHandler } from 'fortigate-autoscale-core/autoscale-handler';
 import * as Platform from 'fortigate-autoscale-core/cloud-platform';
 import { URL } from 'url';
+import { GoogleAuth } from 'google-auth-library';
+import { sleep } from 'fortigate-autoscale-core/core-functions';
 
 const {
-    FIRESTORE_DATABASE,
-    ASSET_STORAGE_NAME ,
-    FORTIGATE_PSK_SECRET,
-    TRIGGER_URL,
-    PROJECT_ID,
-    SCRIPT_TIMEOUT,
-
-} = process.env,
-SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now();
+        FIRESTORE_DATABASE,
+        ASSET_STORAGE_NAME,
+        FORTIGATE_PSK_SECRET,
+        TRIGGER_URL,
+        PROJECT_ID,
+        SCRIPT_TIMEOUT,
+        REGION,
+        ELASTIC_IP_NAME //TODO: can move to DB item once core is updated.
+    } = process.env,
+    SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now(),
+    ELASTIC_IP_NIC = 'nic0', // GCP will only use nic0 at the moment. May change in the future.
+    ATTACH_EIP_TIME_LIMIT = 45000
 
 namespace GCPPlatform {
     export interface Filter {
@@ -47,33 +52,43 @@ namespace GCPPlatform {
         PublicIpAddress: string;
         SubnetId: string;
         VpcId: string;
+        zone?: string;
     }
+    export interface DeleteRequest {
+        data: Data;
+      }
+      export interface Data {
+        id: string;
+        name: string;
+        zone: string;
+        operationType?: string;
+        targetLink?: string;
+        targetId?: string;
+        status?: string;
+        user?: string;
+        progress?: number;
+        insertTime?: string;
+        startTime?: string;
+        selfLink: string;
+        kind?: string;
+      }
 }
-interface GCPVirtualMachineDescriptor
-    extends AutoScaleCore.VirtualMachineLike,
-        GCPPlatform.Instance {
-            InstanceId: string;
-            PrivateIpAddress: string;
-            PublicIpAddress: string;
-            SubnetId: string;
-            VpcId: string;
-        }
+interface GCPVirtualMachineDescriptor extends AutoScaleCore.VirtualMachineLike, GCPPlatform.Instance {
+    InstanceId: string;
+    PrivateIpAddress: string;
+    PublicIpAddress: string;
+    SubnetId: string;
+    VpcId: string;
+    zone?: string;
+}
 
-export interface GCPNetworkInterface
-    extends AutoScaleCore.NetworkInterfaceLike,
-        GCPPlatform.NetworkInterface {}
-class GCPVirtualMachine extends AutoScaleCore.VirtualMachine<
-    GCPVirtualMachineDescriptor,
-    GCPNetworkInterface
-> {
-
+export interface GCPNetworkInterface extends AutoScaleCore.NetworkInterfaceLike, GCPPlatform.NetworkInterface {}
+class GCPVirtualMachine extends AutoScaleCore.VirtualMachine<GCPVirtualMachineDescriptor, GCPNetworkInterface> {
     constructor(o: GCPVirtualMachineDescriptor) {
         super(o.InstanceId, o.scalingGroupName || null, 'gcp', o as GCPVirtualMachineDescriptor);
-
     }
 
     get primaryPrivateIpAddress() {
-
         return this.sourceData.PrivateIpAddress;
     }
 
@@ -89,11 +104,7 @@ class GCPVirtualMachine extends AutoScaleCore.VirtualMachine<
         return this.sourceData.VpcId;
     }
 }
-export class GCPRuntimeAgent extends AutoScaleCore.RuntimeAgent<
-    GCPPlatformRequest,
-    GCPPlatformContext,
-    Console
->   {
+export class GCPRuntimeAgent extends AutoScaleCore.RuntimeAgent<GCPPlatformRequest, GCPPlatformContext, Console> {
     public body: any;
     public instance: any;
     public headers: GCPRuntimeAgent;
@@ -108,12 +119,9 @@ export class GCPRuntimeAgent extends AutoScaleCore.RuntimeAgent<
 // tslint:disable-next-line: no-empty-interface
 export interface GCPPlatformRequest extends AutoScaleCore.HttpRequest {}
 
-export interface GCPPlatformContext {
+export interface GCPPlatformContext {}
 
-}
-
-export interface GCPNameValuesPair extends GCPPlatform.Filter {
-}
+export interface GCPNameValuesPair extends GCPPlatform.Filter {}
 export interface HttpRequest extends Platform.HttpRequestLike {
     httpMethod(): Platform.HttpMethodType;
 }
@@ -123,26 +131,27 @@ interface GCPBlobStorageItemDescriptor extends AutoScaleCore.BlobStorageItemDesc
     fileName?: string;
 }
 export class GCP extends CloudPlatform<
-        GCPPlatformRequest,
-        GCPPlatformContext,
-        Console,
-        GCPNameValuesPair,
-        GCPVirtualMachineDescriptor,
-        GCPVirtualMachine,
-        GCPRuntimeAgent
-        > {
-
+    GCPPlatformRequest,
+    GCPPlatformContext,
+    Console,
+    GCPNameValuesPair,
+    GCPVirtualMachineDescriptor,
+    GCPVirtualMachine,
+    GCPRuntimeAgent
+> {
     public logger = new AutoScaleCore.Functions.DefaultLogger(console);
     public compute = new Compute();
     public blobStorage = new Storage({
-        projectId: PROJECT_ID,
+        projectId: PROJECT_ID
     });
     private fireStoreClient = new Firestore();
 
     public respond(response: AutoScaleCore.ErrorDataPairLike, httpStatusCode?: number): Promise<void> {
         throw new Error('Method not implemented.');
     }
-    public describeScalingGroup(decriptor: AutoScaleCore.ScalingGroupDecriptor): Promise<AutoScaleCore.ScalingGroupLike> {
+    public describeScalingGroup(
+        decriptor: AutoScaleCore.ScalingGroupDecriptor
+    ): Promise<AutoScaleCore.ScalingGroupLike> {
         throw new Error('Method not implemented.');
     }
 
@@ -159,47 +168,43 @@ export class GCP extends CloudPlatform<
             const formattedItems: AutoScaleCore.SettingItems = {};
             const filteredItems: AutoScaleCore.SettingItems = {};
 
-            if (getDoc && getDoc._fieldsProto
-                ) {
-                    console.log('Getting Setting Items.');
-                    // tslint:disable-next-line: forin
-                    for (item in getDoc._fieldsProto) {
-                        // An empty String in FireStore counts as undefined
-                        if (!item.mapValue) {
-                            settingItem =
-                            new AutoScaleCore.SettingItem(
-                                item,
-                                getDoc._fieldsProto[item].mapValue.fields.settingValue.stringValue,
-                                getDoc._fieldsProto[item].mapValue.fields.editable.booleanValue,
-                                getDoc._fieldsProto[item].mapValue.fields.jsonEncoded.booleanValue,
-                                getDoc._fieldsProto[item].mapValue.fields.description.stringValue,
-                            );
-                            formattedItems[item] = settingItem;
-                            filteredItems[item] = settingItem;
-                        } else {
-                            settingItem =
-                            new AutoScaleCore.SettingItem(
-                                item,
-                                getDoc._fieldsProto[item].mapValue.fields.settingValue.stringValue,
-                                getDoc._fieldsProto[item].mapValue.fields.editable.booleanValue,
-                                getDoc._fieldsProto[item].mapValue.fields.jsonEncoded.booleanValue,
-                                getDoc._fieldsProto[item].mapValue.fields.description.stringValue,
-                            );
-                            formattedItems[item] = settingItem;
-                            filteredItems[item] = settingItem;
-                        }
+            if (getDoc && getDoc._fieldsProto) {
+                console.log('Getting Setting Items.');
+                // tslint:disable-next-line: forin
+                for (item in getDoc._fieldsProto) {
+                    // An empty String in FireStore counts as undefined
+                    if (!item.mapValue) {
+                        settingItem = new AutoScaleCore.SettingItem(
+                            item,
+                            getDoc._fieldsProto[item].mapValue.fields.settingValue.stringValue,
+                            getDoc._fieldsProto[item].mapValue.fields.editable.booleanValue,
+                            getDoc._fieldsProto[item].mapValue.fields.jsonEncoded.booleanValue,
+                            getDoc._fieldsProto[item].mapValue.fields.description.stringValue
+                        );
+                        formattedItems[item] = settingItem;
+                        filteredItems[item] = settingItem;
+                    } else {
+                        settingItem = new AutoScaleCore.SettingItem(
+                            item,
+                            getDoc._fieldsProto[item].mapValue.fields.settingValue.stringValue,
+                            getDoc._fieldsProto[item].mapValue.fields.editable.booleanValue,
+                            getDoc._fieldsProto[item].mapValue.fields.jsonEncoded.booleanValue,
+                            getDoc._fieldsProto[item].mapValue.fields.description.stringValue
+                        );
+                        formattedItems[item] = settingItem;
+                        filteredItems[item] = settingItem;
                     }
-                    this.__settings = formattedItems;
-                    this._initialized = true;
-                    return keyFilter && filteredItems || formattedItems;
+                }
+                this.__settings = formattedItems;
+                this._initialized = true;
+                return (keyFilter && filteredItems) || formattedItems;
             }
-
         } catch (err) {
             console.log('Error Getting Setting Items', err);
             throw err;
         }
         throw console.error('Could Not Retreive Setting items. From Firestore');
-}
+    }
 
     public getLicenseFileContent(descriptor: AutoScaleCore.BlobStorageItemDescriptor): Promise<string> {
         throw new Error('Method not implemented.');
@@ -216,18 +221,18 @@ export class GCP extends CloudPlatform<
         return getAutoscaler;
     }
     // Get config file from Storage and return as object
-    public async getBlobFromStorage(
-        parameters: GCPBlobStorageItemDescriptor,
-    ) {
+    public async getBlobFromStorage(parameters: GCPBlobStorageItemDescriptor) {
         console.log('Getting Config From Blob Storage');
         const files = await this.blobStorage.bucket(parameters.storageName);
         const file = files.file(parameters.fileName);
-        const fileData = {content: (await file.download()).toString()};
+        const fileData = { content: (await file.download()).toString() };
         return fileData;
     }
-    public async putMasterRecord(candidateInstance: GCPVirtualMachine,
-                                 voteState: AutoScaleCore.MasterElection.VoteState,
-                                 method: AutoScaleCore.MasterElection.VoteMethod): Promise<boolean> {
+    public async putMasterRecord(
+        candidateInstance: GCPVirtualMachine,
+        voteState: AutoScaleCore.MasterElection.VoteState,
+        method: AutoScaleCore.MasterElection.VoteMethod
+    ): Promise<boolean> {
         console.log('Updating Master Record Database', candidateInstance);
         const datetoInt = Date.now();
         const masterUpdateClient = this.fireStoreClient;
@@ -236,12 +241,13 @@ export class GCP extends CloudPlatform<
         try {
             await document.update({
                 [fieldName]: {
-                MasterIP: candidateInstance.primaryPrivateIpAddress,
-                InstanceId: candidateInstance.instanceId,
-                VpcId: candidateInstance.virtualNetworkId,
-                SubnetId: 'null',
-                voteEndTime: datetoInt + (90 * 1000), // TODO:script timeout
-                VoteState: voteState},
+                    MasterIP: candidateInstance.primaryPrivateIpAddress,
+                    InstanceId: candidateInstance.instanceId,
+                    VpcId: candidateInstance.virtualNetworkId,
+                    SubnetId: 'null',
+                    voteEndTime: datetoInt + 90 * 1000, // TODO:script timeout
+                    VoteState: voteState
+                }
             });
 
             return true;
@@ -257,14 +263,18 @@ export class GCP extends CloudPlatform<
         const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
         let getDoc;
         try {
-         getDoc = await fireStoreDocument.get();
+            getDoc = await fireStoreDocument.get();
         } catch (err) {
             console.log(`Error in getting master record ${err}`);
         }
-        if (getDoc && getDoc._fieldsProto && getDoc._fieldsProto.masterRecord &&
+        if (
+            getDoc &&
+            getDoc._fieldsProto &&
+            getDoc._fieldsProto.masterRecord &&
             getDoc._fieldsProto.masterRecord.mapValue.fields &&
             getDoc._fieldsProto.masterRecord.mapValue.fields.MasterIP &&
-            getDoc._fieldsProto.masterRecord.mapValue.fields.InstanceId) {
+            getDoc._fieldsProto.masterRecord.mapValue.fields.InstanceId
+        ) {
             const docData = {
                 ip: getDoc._fieldsProto.masterRecord.mapValue.fields.MasterIP.stringValue,
                 instanceId: getDoc._fieldsProto.masterRecord.mapValue.fields.InstanceId.stringValue,
@@ -272,9 +282,9 @@ export class GCP extends CloudPlatform<
                 subnetId: getDoc._fieldsProto.masterRecord.mapValue.fields.SubnetId.stringValue,
                 voteEndTime: getDoc._fieldsProto.masterRecord.mapValue.fields.voteEndTime.integerValue,
                 voteState: getDoc._fieldsProto.masterRecord.mapValue.fields.VoteState.stringValue,
-                vpcId: getDoc._fieldsProto.masterRecord.mapValue.fields.VpcId.stringValue,
+                vpcId: getDoc._fieldsProto.masterRecord.mapValue.fields.VpcId.stringValue
             };
-            console.log(`Master Record  + ${docData}`)
+            console.log(`Master Record  + ${docData}`);
             return docData;
         } else {
             console.log('No Master record found in DB returning Null');
@@ -284,55 +294,62 @@ export class GCP extends CloudPlatform<
     public async removeMasterRecord(): Promise<void> {
         const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
         try {
-
             await fireStoreDocument.update({
-                masterRecord: FieldValue.delete(),
+                masterRecord: FieldValue.delete()
             });
             console.log('Removing master Record');
         } catch (err) {
             console.log('Error in removing Master Record', err);
         }
-
     }
 
-    public async getInstanceHealthCheck(descriptor: AutoScaleCore.VirtualMachineDescriptor,
-                                        heartBeatInterval?: number): Promise<AutoScaleCore.HealthCheck> {
-                if (descriptor && descriptor.instanceId) {
-                    console.log('getting Record from AutoScale Table');
-                    var recordId = descriptor.instanceId;
-                } else {
-                    console.log('No Instance ID provided to getInstanceHealthCheck. Returning Null');
-                    return null;
-                }
-                const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/FORTIGATEAUTOSCALE`);
-                let getDoc;
-                try {
-                    getDoc = await fireStoreDocument.get();
-                } catch (err) {
-                    console.log(`Error in getInstanceHealthCheck. Could not retrieve instance record ${err}`);
-                    throw(err);
-                }
-                if (getDoc && getDoc._fieldsProto && getDoc._fieldsProto[recordId] &&
-                    getDoc._fieldsProto[recordId].mapValue.fields
-                    ) {
-                        var docData: AutoScaleCore.HealthCheck = {
-                        instanceId: recordId,
-                        inSync: getDoc._fieldsProto[recordId].mapValue.fields.inSync.booleanValue,
-                        healthy: getDoc._fieldsProto[recordId].mapValue.fields.healthy.booleanValue,
-                        masterIp: getDoc._fieldsProto[recordId].mapValue.fields.masterIp.stringValue,
-                        // In the case that HeartBeatLoss is not yet defined return 0. Only occurs on first set up.
-                        heartBeatLossCount: getDoc._fieldsProto[recordId].mapValue.fields.heartBeatLossCount.integerValue || 0,
-                        heartBeatInterval: getDoc._fieldsProto[recordId].mapValue.fields.heartBeatInterval.integerValue || 25,
-                        nextHeartBeatTime: getDoc._fieldsProto[recordId].mapValue.fields.nextHeartBeatTime.integerValue,
-                        ip: getDoc._fieldsProto[recordId].mapValue.fields.ip.stringValue,
-                        syncState: getDoc._fieldsProto[recordId].mapValue.fields.syncState.stringValue,
-                        };
-                    }
-                return docData;
+    public async getInstanceHealthCheck(
+        descriptor: AutoScaleCore.VirtualMachineDescriptor,
+        heartBeatInterval?: number
+    ): Promise<AutoScaleCore.HealthCheck> {
+        if (descriptor && descriptor.instanceId) {
+            console.log('getting Record from AutoScale Table');
+            var recordId = descriptor.instanceId;
+        } else {
+            console.log('No Instance ID provided to getInstanceHealthCheck. Returning Null');
+            return null;
+        }
+        const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/FORTIGATEAUTOSCALE`);
+        let getDoc;
+        try {
+            getDoc = await fireStoreDocument.get();
+        } catch (err) {
+            console.log(`Error in getInstanceHealthCheck. Could not retrieve instance record ${err}`);
+            throw err;
+        }
+        if (
+            getDoc &&
+            getDoc._fieldsProto &&
+            getDoc._fieldsProto[recordId] &&
+            getDoc._fieldsProto[recordId].mapValue.fields
+        ) {
+            var docData: AutoScaleCore.HealthCheck = {
+                instanceId: recordId,
+                inSync: getDoc._fieldsProto[recordId].mapValue.fields.inSync.booleanValue,
+                healthy: getDoc._fieldsProto[recordId].mapValue.fields.healthy.booleanValue,
+                masterIp: getDoc._fieldsProto[recordId].mapValue.fields.masterIp.stringValue,
+                // In the case that HeartBeatLoss is not yet defined return 0. Only occurs on first set up.
+                heartBeatLossCount: getDoc._fieldsProto[recordId].mapValue.fields.heartBeatLossCount.integerValue || 0,
+                heartBeatInterval: getDoc._fieldsProto[recordId].mapValue.fields.heartBeatInterval.integerValue || 25,
+                nextHeartBeatTime: getDoc._fieldsProto[recordId].mapValue.fields.nextHeartBeatTime.integerValue,
+                ip: getDoc._fieldsProto[recordId].mapValue.fields.ip.stringValue,
+                syncState: getDoc._fieldsProto[recordId].mapValue.fields.syncState.stringValue
+            };
+        }
+        return docData;
     }
-    public async updateInstanceHealthCheck(healthCheck: AutoScaleCore.HealthCheck,
-                                           heartBeatInterval: number, masterIp: string,
-                                           checkPointTime: number, forceOutOfSync?: boolean): Promise<boolean> {
+    public async updateInstanceHealthCheck(
+        healthCheck: AutoScaleCore.HealthCheck,
+        heartBeatInterval: number,
+        masterIp: string,
+        checkPointTime: number,
+        forceOutOfSync?: boolean
+    ): Promise<boolean> {
         const datetoInt = checkPointTime || Date.now();
         const autoScaleRecordUpdate = this.fireStoreClient;
         const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEAUTOSCALE`);
@@ -346,25 +363,25 @@ export class GCP extends CloudPlatform<
             masterIp,
             syncState: healthCheck.syncState,
             nextHeartBeatTime: datetoInt,
-            healthy: healthCheck.healthy,
+            healthy: healthCheck.healthy
         };
         try {
             await document.update({
-                [fieldName] :
-                    instanceRecord,
+                [fieldName]: instanceRecord
             });
             return true;
         } catch (err) {
-            console.log(`Error in updateInstanceHealthCheck. Could not updateAutoScale Record. for ${healthCheck.ip} Error: ${err}`);
-            throw(err);
+            console.log(
+                `Error in updateInstanceHealthCheck. Could not updateAutoScale Record. for ${healthCheck.ip} Error: ${err}`
+            );
+            throw err;
         }
-
     }
     public async deleteInstanceHealthCheck(instanceId: string): Promise<boolean> {
         const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/FORTIGATEAUTOSCALE`);
         try {
             await fireStoreDocument.update({
-                [instanceId]: FieldValue.delete(),
+                [instanceId]: FieldValue.delete()
             });
         } catch (err) {
             console.log('Error in removing AutoScale Record', err);
@@ -373,33 +390,168 @@ export class GCP extends CloudPlatform<
         console.log('Removed AutoScale Record');
         return true;
     }
+    //
 
-    public async finalizeMasterElection(): Promise<boolean> {
-            console.log('Finalizing Master Election');
-            const autoScaleRecordUpdate = this.fireStoreClient;
-            const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
-            try {
-                // Updates a nested object without removing the entire object.
-                await document.update({
-                    ['masterRecord.' + 'VoteState']: 'done',
-                });
-            } catch (err) {
-                console.log(`Error in finalizeMasterElection could not update Master record. ${err}`);
-            }
-            return true;
+    public async attachEIPtoMaster(instanceId, instanceZone) {
+        // Won't break the cluster if there is no EIP but should report as an error.
+        if (!instanceId || !instanceZone) {
+            console.error(
+                `Error in Attaching EIP to primary instance: IntanceId and InstanceZone must be specified: instanceId: ${instanceId} instanceZone: ${instanceZone}`
+            );
         }
-    public async setSettingItem(key: string, value: string | {}, description?: string, jsonEncoded?: boolean, editable?: boolean): Promise<boolean> {
-        console.log('Updating Setting Database' );
+        console.log('Updating Master Instance External IP');
+        console.log(
+            `InstanceID data passed to the attachEIPtoMaster Function: ${instanceId} instanceZone: ${instanceZone}`
+        );
+
+        // Google's auth client should be able to determine whether you are running locally, or in a cloud function.
+        // We use it here since we need to use their api, no the Node library to change addressconfigs.
+        const auth = new GoogleAuth({
+            scopes: 'https://www.googleapis.com/auth/cloud-platform'
+        });
+        const client = await auth.getClient();
+
+        const getAddressURL = `https://compute.googleapis.com/compute/v1/projects/${PROJECT_ID}/regions/${REGION}/addresses/${ELASTIC_IP_NAME}`;
+        const deleteAddressConfigURL = `https://compute.googleapis.com/compute/v1/projects/${PROJECT_ID}/zones/${instanceZone}/instances/${instanceId}/deleteAccessConfig`;
+        const addAddressConfigURL = `https://compute.googleapis.com/compute/v1/projects/${PROJECT_ID}/zones/${instanceZone}/instances/${instanceId}/addAccessConfig/`;
+        const getAddressReq: any = await client.request({
+            method: 'GET',
+            url: getAddressURL
+        });
+        // First must delete the ephemeral address on a host.
+        // Then we can add the EIP(or static address in the case of GCP)
+        try {
+            const deleteReq: GCPPlatform.DeleteRequest = await client.request({
+                method: 'POST',
+                url: deleteAddressConfigURL,
+                params: {
+                    networkInterface: ELASTIC_IP_NIC,
+                    accessConfig: 'external-nat'
+                }
+            });
+            // Troubleshooting data:
+            console.log(`Delete EIP request ${JSON.stringify(deleteReq.data)}`);
+            // If the request has been queued check the VM for the current accessConfig
+            if(deleteReq.data.status !== 'SUCCEEDED'){
+                console.warn(`Delete has queued. Waiting for it to finish before adding Static IP`)
+                let running = true;
+                let startTime = Date.now();
+                const attachEIPTimeLimit = ATTACH_EIP_TIME_LIMIT // Default 45 seconds max.
+                while(running === true && startTime + attachEIPTimeLimit > Date.now()){
+                    const getInstanceInfo = await this.getInstanceInfo(instanceId)
+                        // Check if there is an access config
+                        // If there isn't then we are done running and can continue
+                        if(!getInstanceInfo.networkInterfaces[0].accessConfigs){
+                            running = false;
+                        }
+                        else{
+                            console.log(`Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${Date.now() - startTime}`)
+                            // sleep for 2 seconds.
+                           await sleep(2000);
+                        }
+
+                    }
+                }
+
+        } catch (err) {
+            console.log(`Error in delete request ${err}`);
+        }
+        // Add the EIP to the new primary.
+        try {
+            const addAddressReq = await client.request({
+                method: 'POST',
+                url: addAddressConfigURL,
+                params: {
+                    networkInterface: ELASTIC_IP_NIC
+                },
+                data: {
+                    type: 'EXTERNAL',
+                    name: ELASTIC_IP_NAME,
+                    natIP: getAddressReq.data.address,
+                    networkTier: getAddressReq.data.networkTier, // 'PREMIUM'
+                    kind: getAddressReq.data.kind // 'compute#accessConfig'
+                }
+            });
+            console.log(addAddressReq.data);
+        } catch (err) {
+            console.log(`Error in attaching EIP ${err}`);
+        }
+    }
+    public async getInstanceInfo(instanceId) {
+        // Primary purpose here is to return the zone. Which is not included in the older core.
+        let compute = new Compute();
+        try {
+            console.log('Fetching VMs');
+            const [vms] = await compute.getVMs();
+
+            for (let vmData of vms) {
+                if (vmData.metadata.id === instanceId) {
+                    console.log('VM data' + JSON.stringify(vmData.metadata));
+                    return vmData.metadata;
+                }
+            }
+        } catch (err) {
+            console.log(err);
+            throw err;
+        }
+    }
+    public async finalizeMasterElection(): Promise<boolean> {
+        console.log('Finalizing Primary Election');
+        // this._masterRecord is undefined at this point and doesn't contain Zone property.
+        // As a temporary fix we must grab the instanceId that has been set in firestore then
+        // lookup the data and retrieve the instaceId/zone etc.
+        // TODO: update when changing core.
+        const autoScaleRecordUpdate = this.fireStoreClient;
+        const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEMASTERELECTION`);
+        let getDoc;
+        try {
+            getDoc = await document.get();
+        }
+      catch (err) {
+            console.log(`Error in getting Primary record ${err}`);
+        }
+        if (
+            getDoc?._fieldsProto?.masterRecord?.mapValue?.fields?.InstanceId
+        ) {
+            const primaryInstanceId = getDoc._fieldsProto.masterRecord.mapValue.fields.InstanceId.stringValue;
+            // Includes all info needed to change the EIP, but we really just need the zone.
+            const resourceInfo = await this.getInstanceInfo(primaryInstanceId)
+            console.log(`Primary Election ${primaryInstanceId}, Zone: ${this.gcpSplitURL(resourceInfo.zone)}`);
+            console.log(`Attaching static address to Primary Instance`);
+            // Grab the zone from the GCP url and send to attachEIP
+            await this.attachEIPtoMaster(primaryInstanceId, this.gcpSplitURL(resourceInfo.zone));
+        }
+
+        try {
+            // Updates a nested object without removing the entire object.
+            await document.update({
+                ['masterRecord.' + 'VoteState']: 'done'
+            });
+
+
+        } catch (err) {
+            console.log(`Error in finializing Primary record in election could not update Primary record. ${err}`);
+        }
+        return true;
+    }
+    public async setSettingItem(
+        key: string,
+        value: string | {},
+        description?: string,
+        jsonEncoded?: boolean,
+        editable?: boolean
+    ): Promise<boolean> {
+        console.log('Updating Setting Database');
         const document = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/SETTINGS`);
         console.log(key, value);
         try {
             await document.update({
-                [key] : {
+                [key]: {
                     settingValue: value ? value : null,
                     editable: editable ? editable : false,
                     jsonEncoded: jsonEncoded ? jsonEncoded : false,
-                    description: description ? description : 'No Description',
-                },
+                    description: description ? description : 'No Description'
+                }
             });
         } catch (err) {
             console.log(`Error in Updating Setting Table ${err}`);
@@ -420,7 +572,7 @@ export class GCP extends CloudPlatform<
         } else if (runtimeAgent) {
             try {
                 var instanceId = runtimeAgent.instance;
-                } catch (ex) {
+            } catch (ex) {
                 this.logger.info('calling extractRequestInfo: unexpected body content format ', ex);
             }
         } else {
@@ -430,37 +582,37 @@ export class GCP extends CloudPlatform<
         return {
             instanceId,
             interval,
-            status: null,
+            status: null
         };
     }
-        // Takes instanceID and returns IP etc.
+    // Takes instanceID and returns IP etc.
     public async describeInstance(descriptor: AutoScaleCore.VirtualMachineDescriptor): Promise<GCPVirtualMachine> {
-    const options = {
-        // Filter Options can be found here:
-        // https://cloud.google.com/nodejs/docs/reference/compute/0.10.x/Compute#getVMs
-    };
-    try {
-        console.log('Fetching VMs');
-        const [vms] = await this.compute.getVMs(options);
-        for (let vmData of vms) {
-            if (vmData.metadata.id === descriptor.instanceId) {
-                // TODO: look into additional values of the VM types.
-                var vmReturn:any = {
-                    instanceId: vmData.metadata.id,
-                    PrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
-                    primaryPrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
-                    SubnetId: vmData.metadata.networkInterfaces[0].subnetwork,
-                    virtualNetworkId: 'empty',
-                };
-                return vmReturn;
+        const options = {
+            // Filter Options can be found here:
+            // https://cloud.google.com/nodejs/docs/reference/compute/0.10.x/Compute#getVMs
+        };
+        try {
+            console.log('Fetching VMs');
+            const [vms] = await this.compute.getVMs(options);
+            for (let vmData of vms) {
+                if (vmData.metadata.id === descriptor.instanceId) {
+                    // TODO: look into additional values of the VM types.
+                    var vmReturn: any = {
+                        instanceId: vmData.metadata.id,
+                        PrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
+                        primaryPrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
+                        SubnetId: vmData.metadata.networkInterfaces[0].subnetwork,
+                        virtualNetworkId: 'empty',
+                        zone: this.gcpSplitURL(vmData.metadata.zone)
+                    };
+                    return vmReturn;
+                }
             }
+        } catch (err) {
+            console.log(err);
+            throw err;
         }
-    } catch (err) {
-        console.log(err);
-        throw err;
-    }
-    return null;
-
+        return null;
     }
 
     public gcpSplitURL(indexItem: string): string {
@@ -483,28 +635,40 @@ export class GCP extends CloudPlatform<
             console.log(`Failed to Delete instance:  ${err}`);
             return false;
         }
-
     }
 
     public deleteInstances(parameters: AutoScaleCore.VirtualMachineDescriptor[]): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
-    public createNetworkInterface(parameters: AutoScaleCore.NetworkInterfaceDescriptor): Promise<boolean | AutoScaleCore.NetworkInterfaceLike> {
+    public createNetworkInterface(
+        parameters: AutoScaleCore.NetworkInterfaceDescriptor
+    ): Promise<boolean | AutoScaleCore.NetworkInterfaceLike> {
         throw new Error('Method not implemented.');
     }
     public deleteNetworkInterface(parameters: AutoScaleCore.NetworkInterfaceDescriptor): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
-    public describeNetworkInterface(parameters: AutoScaleCore.NetworkInterfaceDescriptor): Promise<AutoScaleCore.NetworkInterfaceLike> {
+    public describeNetworkInterface(
+        parameters: AutoScaleCore.NetworkInterfaceDescriptor
+    ): Promise<AutoScaleCore.NetworkInterfaceLike> {
         throw new Error('Method not implemented.');
     }
-    public listNetworkInterfaces(parameters: AutoScaleCore.FilterLikeResourceQuery<GCPNameValuesPair>, statusToInclude?: string[]): Promise<AutoScaleCore.NetworkInterfaceLike[]> {
+    public listNetworkInterfaces(
+        parameters: AutoScaleCore.FilterLikeResourceQuery<GCPNameValuesPair>,
+        statusToInclude?: string[]
+    ): Promise<AutoScaleCore.NetworkInterfaceLike[]> {
         throw new Error('Method not implemented.');
     }
-    public attachNetworkInterface(instance: GCPVirtualMachine, nic: AutoScaleCore.NetworkInterfaceLike): Promise<string | boolean> {
+    public attachNetworkInterface(
+        instance: GCPVirtualMachine,
+        nic: AutoScaleCore.NetworkInterfaceLike
+    ): Promise<string | boolean> {
         throw new Error('Method not implemented.');
     }
-    public detachNetworkInterface(instance: GCPVirtualMachine, nic: AutoScaleCore.NetworkInterfaceLike): Promise<boolean> {
+    public detachNetworkInterface(
+        instance: GCPVirtualMachine,
+        nic: AutoScaleCore.NetworkInterfaceLike
+    ): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
     public listNicAttachmentRecord(): Promise<AutoScaleCore.NicAttachmentRecord[]> {
@@ -513,17 +677,27 @@ export class GCP extends CloudPlatform<
     public getNicAttachmentRecord(instanceId: string): Promise<AutoScaleCore.NicAttachmentRecord> {
         throw new Error('Method not implemented.');
     }
-    public updateNicAttachmentRecord(instanceId: string, nicId: string, state: AutoScaleCore.NicAttachmentState, conditionState?: AutoScaleCore.NicAttachmentState): Promise<boolean> {
+    public updateNicAttachmentRecord(
+        instanceId: string,
+        nicId: string,
+        state: AutoScaleCore.NicAttachmentState,
+        conditionState?: AutoScaleCore.NicAttachmentState
+    ): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
-    public deleteNicAttachmentRecord(instanceId: string, conditionState?: AutoScaleCore.NicAttachmentState): Promise<boolean> {
+    public deleteNicAttachmentRecord(
+        instanceId: string,
+        conditionState?: AutoScaleCore.NicAttachmentState
+    ): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
 
     public listBlobFromStorage(parameters: AutoScaleCore.BlobStorageItemDescriptor): Promise<AutoScaleCore.Blob[]> {
         throw new Error('Method not implemented.');
     }
-    public listLicenseFiles(parameters?: AutoScaleCore.BlobStorageItemDescriptor): Promise<Map<string, AutoScaleCore.LicenseItem>> {
+    public listLicenseFiles(
+        parameters?: AutoScaleCore.BlobStorageItemDescriptor
+    ): Promise<Map<string, AutoScaleCore.LicenseItem>> {
         throw new Error('Method not implemented.');
     }
     public updateLicenseUsage(licenseRecord: AutoScaleCore.LicenseRecord, replace?: boolean): Promise<boolean> {
@@ -550,7 +724,9 @@ export class GCP extends CloudPlatform<
     public getExecutionTimeRemaining(): number {
         return Number(SCRIPT_TIMEOUT) - AutoScaleCore.Functions.getTimeLapse();
     }
-    public describeVirtualNetwork(parameters: AutoScaleCore.VirtualNetworkDescriptor): Promise<AutoScaleCore.VirtualNetworkLike> {
+    public describeVirtualNetwork(
+        parameters: AutoScaleCore.VirtualNetworkDescriptor
+    ): Promise<AutoScaleCore.VirtualNetworkLike> {
         throw new Error('Method not implemented.');
     }
     public listSubnets(parameters: AutoScaleCore.VirtualNetworkDescriptor): Promise<AutoScaleCore.SubnetLike[]> {
@@ -565,21 +741,22 @@ export class GCP extends CloudPlatform<
     public removeLifecycleItem(item: AutoScaleCore.LifecycleItem): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
-    public cleanUpDbLifeCycleActions(items: AutoScaleCore.LifecycleItem[]): Promise<boolean | AutoScaleCore.LifecycleItem[]> {
+    public cleanUpDbLifeCycleActions(
+        items: AutoScaleCore.LifecycleItem[]
+    ): Promise<boolean | AutoScaleCore.LifecycleItem[]> {
         throw new Error('Method not implemented.');
     }
-
 }
 
 export class GCPAutoScaleHandler extends AutoscaleHandler<
-GCPPlatformRequest,
-GCPPlatformContext,
-Console,
-GCPNameValuesPair,
-GCPPlatform.Instance,
-GCPVirtualMachine,
-GCPRuntimeAgent,
-GCP
+    GCPPlatformRequest,
+    GCPPlatformContext,
+    Console,
+    GCPNameValuesPair,
+    GCPPlatform.Instance,
+    GCPVirtualMachine,
+    GCPRuntimeAgent,
+    GCP
 > {
     constructor(platform: GCP) {
         super(platform);
@@ -588,7 +765,8 @@ GCP
         this._masterRecord = null;
         this._selfHealthCheck = null;
         this.scalingGroupName = process.env.AUTO_SCALING_GROUP_NAME;
-        this.compute = new Compute(); }
+        this.compute = new Compute();
+    }
     public logger: AutoScaleCore.Logger<Console>;
     // tslint:disable-next-line: variable-name
     public _step: string;
@@ -596,7 +774,6 @@ GCP
     private fireStoreClient = new Firestore();
     public async removeInstance(instance: GCPVirtualMachine): Promise<boolean> {
         return await this.platform.terminateInstanceInAutoScalingGroup(instance);
-
     }
     public async init(): Promise<boolean> {
         const requiredSettings = {
@@ -628,76 +805,93 @@ GCP
             'fortigate-sync-interface': process.env.FORTIGATE_SYNC_INTERFACE,
             'master-election-no-wait': process.env.MASTER_ELECTION_NO_WAIT,
             'heartbeat-interval': process.env.HEARTBEAT_INTERVAL,
-            'heart-beat-delay-allowance': process.env.HEART_BEAT_DELAY_ALLOWANCE,
+            'heart-beat-delay-allowance': process.env.HEART_BEAT_DELAY_ALLOWANCE
         };
         const db = await getTables();
         const fireStoreDocument = this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/SETTINGS`);
-        const tableArray = [db.FORTIGATEAUTOSCALE, db.FORTIGATEMASTERELECTION, db.LIFECYCLEITEM, db.FORTIANALYZER,
-            db.SETTINGS];
+        const tableArray = [
+            db.FORTIGATEAUTOSCALE,
+            db.FORTIGATEMASTERELECTION,
+            db.LIFECYCLEITEM,
+            db.FORTIANALYZER,
+            db.SETTINGS
+        ];
         // Check if "settings-initialized" == true and if not Initilize the empty collections
         try {
-
             const getDoc: any = await fireStoreDocument.get();
 
-            if (getDoc && getDoc._fieldsProto && getDoc._fieldsProto['deployment-settings-saved'] &&
+            if (
+                getDoc &&
+                getDoc._fieldsProto &&
+                getDoc._fieldsProto['deployment-settings-saved'] &&
                 getDoc._fieldsProto['deployment-settings-saved'].mapValue.fields &&
                 getDoc._fieldsProto['deployment-settings-saved'].mapValue.fields.settingValue &&
                 getDoc._fieldsProto['deployment-settings-saved'].mapValue.fields.settingValue.stringValue &&
                 getDoc._fieldsProto['deployment-settings-saved'].mapValue.fields.settingValue.stringValue === 'true'
-                ) {
-                    console.log('Settings already exist');
-                    await this.loadSettings();
-                } else {
+            ) {
+                console.log('Settings already exist');
+                await this.loadSettings();
+            } else {
                 for (const table of tableArray) {
                     console.log(`Initializing FireStore Document ${table}`);
                     const tableCreate = await this.fireStoreClient.doc(`${FIRESTORE_DATABASE}/${table}`);
-                    await tableCreate.set({
-                    });
+                    await tableCreate.set({});
                 }
                 await this.saveSettings(requiredSettings);
                 await this.saveSettings({
-                      'deployment-settings-saved': 'true',
-                  });
+                    'deployment-settings-saved': 'true'
+                });
                 await this.loadSettings();
             }
         } catch (err) {
             console.log('Error in getting record: ', err);
         }
         return true;
-
     }
 
-    public async saveSettings(settings: {[key: string]: any}) {
+    public async saveSettings(settings: { [key: string]: any }) {
         settings = {};
-        Object.entries(process.env).forEach((entry) => {
+        Object.entries(process.env).forEach(entry => {
             settings[entry[0].replace(new RegExp('_', 'g'), '')] = entry[1];
         });
         settings.deploymentsettingssaved = 'true';
         return await super.saveSettings(settings);
     }
-    public updateCapacity(scalingGroupName: string, desiredCapacity: number, minSize: number, maxSize: number): Promise<boolean> {
+    public updateCapacity(
+        scalingGroupName: string,
+        desiredCapacity: number,
+        minSize: number,
+        maxSize: number
+    ): Promise<boolean> {
         throw new Error('Method not implemented.');
     }
     public checkAutoScalingGroupState(scalingGroupName: string): Promise<string> {
         throw new Error('Method not implemented.');
     }
 
-    public findRecyclableLicense(stockRecords: Map<string, LicenseRecord>, usageRecords: Map<string, LicenseRecord>, limit?: number | 'all'): Promise<LicenseRecord[]> {
+    public findRecyclableLicense(
+        stockRecords: Map<string, LicenseRecord>,
+        usageRecords: Map<string, LicenseRecord>,
+        limit?: number | 'all'
+    ): Promise<LicenseRecord[]> {
         throw new Error('Method not implemented.');
     }
 
-    public async addInstanceToMonitor(instance: GCPVirtualMachine, heartBeatInterval: number,
-                                      masterIp?: string): Promise<boolean> {
+    public async addInstanceToMonitor(
+        instance: GCPVirtualMachine,
+        heartBeatInterval: number,
+        masterIp?: string
+    ): Promise<boolean> {
         console.log(`Adding Instance to monitor (FORTIGATEAUTOSCALE) ${instance.instanceId}`);
         const datetoInt = Date.now();
         const nextHeartBeat = Date.now() + heartBeatInterval * 1000;
-        const autoScaleRecordUpdate =  this.fireStoreClient;
+        const autoScaleRecordUpdate = this.fireStoreClient;
         const document = autoScaleRecordUpdate.doc(`${FIRESTORE_DATABASE}/FORTIGATEAUTOSCALE`);
         const fieldName = instance.instanceId;
 
         try {
             await document.update({
-                [fieldName] : {
+                [fieldName]: {
                     heartBeatInterval: 0,
                     heartBeatLossCount: 0,
                     masterIp,
@@ -707,27 +901,29 @@ GCP
                     inSync: true,
                     syncState: 'in-sync',
                     nextHeartBeatTime: nextHeartBeat || 0,
-                    healthy: true,
-                },
+                    healthy: true
+                }
             });
         } catch (err) {
-            console.log(`Error in addInstanceToMonitor. Could not add instance ${instance.instanceId} to Database, ${err}`);
+            console.log(
+                `Error in addInstanceToMonitor. Could not add instance ${instance.instanceId} to Database, ${err}`
+            );
             return false;
         }
         return true;
-
     }
     public async handle(event: any, context: any, callback: any) {
         await super.handle(event, context, callback);
     }
 
     public async handleGetConfig(event?: any): Promise<AutoScaleCore.ErrorDataPairLike> {
-
         const instanceId = this._requestInfo.instanceId;
-        this._selfInstance = this._selfInstance ||
-        await this.platform.describeInstance({
-            instanceId,
-            scalingGroupName: this.scalingGroupName} as Platform.VirtualMachineDescriptor);
+        this._selfInstance =
+            this._selfInstance ||
+            (await this.platform.describeInstance({
+                instanceId,
+                scalingGroupName: this.scalingGroupName
+            } as Platform.VirtualMachineDescriptor));
         const platform = this.platform;
         let config;
         let masterInfo;
@@ -736,18 +932,20 @@ GCP
         let hbSyncEndpoint: URL;
         const moreConfigSets: AutoScaleCore.ConfigSetParser[] = [];
         const promiseEmitter = this.checkMasterElection.bind(this),
-            validator = (result) => {
-                if (this._masterRecord && this._masterRecord.voteState === 'pending' &&
+            validator = result => {
+                if (
+                    this._masterRecord &&
+                    this._masterRecord.voteState === 'pending' &&
                     this._selfInstance &&
                     this._masterRecord.instanceId === this._selfInstance.instanceId &&
-                    this._masterRecord.scalingGroupName === this.masterScalingGroupName) {
+                    this._masterRecord.scalingGroupName === this.masterScalingGroupName
+                ) {
                     duplicatedGetConfigCall = true;
                     masterIp = this._masterRecord.ip;
                     return true;
                 }
                 if (result) {
-                    if (result.primaryPrivateIpAddress ===
-                        this._selfInstance.primaryPrivateIpAddress) {
+                    if (result.primaryPrivateIpAddress === this._selfInstance.primaryPrivateIpAddress) {
                         masterIp = this._selfInstance.primaryPrivateIpAddress;
                         return true;
                     } else if (this._masterRecord) {
@@ -777,39 +975,43 @@ GCP
                 return true;
             };
         try {
-            masterInfo = await AutoScaleCore.Functions.waitFor(
-                promiseEmitter, validator, 5000, 25);
+            masterInfo = await AutoScaleCore.Functions.waitFor(promiseEmitter, validator, 5000, 25);
         } catch (error) {
             console.log('HandlegetConfig Error: ', error);
-            this._masterRecord = this._masterRecord || await this.platform.getMasterRecord();
-            if (this._masterRecord && this._masterRecord.instanceId === this._selfInstance.instanceId &&
-                this._masterRecord.scalingGroupName === this._selfInstance.scalingGroupName) {
+            this._masterRecord = this._masterRecord || (await this.platform.getMasterRecord());
+            if (
+                this._masterRecord &&
+                this._masterRecord.instanceId === this._selfInstance.instanceId &&
+                this._masterRecord.scalingGroupName === this._selfInstance.scalingGroupName
+            ) {
                 await this.platform.removeMasterRecord();
             }
             await this.removeInstance(this._selfInstance);
-            throw new Error('Failed to determine the master instance. This instance is unable' +
-                ' to bootstrap. Please report this to' +
-                ' administrators.');
+            throw new Error(
+                'Failed to determine the master instance. This instance is unable' +
+                    ' to bootstrap. Please report this to' +
+                    ' administrators.'
+            );
         }
         if (duplicatedGetConfigCall || masterIp === this._selfInstance.primaryPrivateIpAddress) {
             hbSyncEndpoint = await this.platform.getCallbackEndpointUrl();
             config = await this.getMasterConfig(hbSyncEndpoint, moreConfigSets);
-            console.log('called handleGetConfig: returning master config' +
-                `(master-ip: ${masterIp}):\n ${config}`);
+            console.log('called handleGetConfig: returning master config' + `(master-ip: ${masterIp}):\n ${config}`);
             return config;
         } else {
-            const getPendingMasterIp =
-                !(this._settings['master-election-no-wait'].toString() === 'true' &&
+            const getPendingMasterIp = !(
+                this._settings['master-election-no-wait'].toString() === 'true' &&
                 this._masterRecord &&
-                this._masterRecord.voteState === AutoScaleCore.MasterElection.VoteState.pending);
+                this._masterRecord.voteState === AutoScaleCore.MasterElection.VoteState.pending
+            );
             hbSyncEndpoint = await this.platform.getCallbackEndpointUrl();
             const allowHeadless = this._settings['master-election-no-wait'].toString() === 'false';
-            masterIp = getPendingMasterIp && masterInfo &&
-                masterInfo.primaryPrivateIpAddress || null;
-            config = await this.getSlaveConfig(hbSyncEndpoint, allowHeadless, masterIp,
-                moreConfigSets);
-            console.log('called handleGetConfig: returning slave config' +
-                `(master-ip: ${masterIp || 'undetermined'}):\n ${config}`);
+            masterIp = (getPendingMasterIp && masterInfo && masterInfo.primaryPrivateIpAddress) || null;
+            config = await this.getSlaveConfig(hbSyncEndpoint, allowHeadless, masterIp, moreConfigSets);
+            console.log(
+                'called handleGetConfig: returning slave config' +
+                    `(master-ip: ${masterIp || 'undetermined'}):\n ${config}`
+            );
             return config;
         }
     }
@@ -821,14 +1023,14 @@ GCP
     }
     public proxyResponse(statusCode: number, res: {}, logOptions?: {}) {
         const response = {
-                statusCode,
-                headers: {},
-                body: typeof res === 'string' ? res : JSON.stringify(res),
-                isBase64Encoded: false,
+            statusCode,
+            headers: {},
+            body: typeof res === 'string' ? res : JSON.stringify(res),
+            isBase64Encoded: false
         };
         console.log('Response', response);
         return response;
-     }
+    }
     public parseConfigSet(configSet: string, parser: AutoScaleCore.ConfigSetParser): Promise<string> {
         throw new Error('Method not implemented.');
     }
@@ -842,7 +1044,11 @@ GCP
         throw new Error('Method not implemented.');
     }
     // Life Cylce actions are not used in GCP, dummy function to pass true when called by handlesyncedcallback.
-    public async handleLifecycleAction(instanceId: string, action: AutoScaleCore.LifecycleAction, fulfilled: boolean): Promise<boolean> {
+    public async handleLifecycleAction(
+        instanceId: string,
+        action: AutoScaleCore.LifecycleAction,
+        fulfilled: boolean
+    ): Promise<boolean> {
         return true;
     }
 
@@ -852,11 +1058,7 @@ GCP
 }
 
 exports.main = async function(req, res, callback) {
-    if (FIRESTORE_DATABASE &&
-    ASSET_STORAGE_NAME &&
-    FORTIGATE_PSK_SECRET &&
-    TRIGGER_URL &&
-    PROJECT_ID) {
+    if (FIRESTORE_DATABASE && ASSET_STORAGE_NAME && FORTIGATE_PSK_SECRET && TRIGGER_URL && PROJECT_ID) {
         let context;
         const logger = new AutoScaleCore.Functions.DefaultLogger(console);
         const RuntimeAgent: GCPRuntimeAgent = new GCPRuntimeAgent(req, context, logger, callback);
@@ -867,13 +1069,13 @@ exports.main = async function(req, res, callback) {
             console.log('Response', data.body);
             res.status(200).send(data.body);
             res.end();
-            };
+        };
         return await handler.handle(req, context, callback);
     } else {
-     console.log(`FIRESTORE_DATABASE, ASSET_STORAGE_NAME, FORTIGATE_PSK_SECRET, TRIGGER_URL AND
+        console.log(`FIRESTORE_DATABASE, ASSET_STORAGE_NAME, FORTIGATE_PSK_SECRET, TRIGGER_URL AND
       PROJECT_ID Must be defined. Terminating Function.`);
-     res.end();
- }
+        res.end();
+    }
 };
 async function getTables() {
     const dbCollection = Tables;

@@ -20,7 +20,7 @@ provider "google-beta" {
 resource "random_string" "psk" {
   length           = 16
   special          = true
-  override_special = ""
+  override_special = "![]{}"
 }
 #Random 5 char string appended to the end of each name to avoid conflicts
 resource "random_string" "random_name_post" {
@@ -39,6 +39,9 @@ resource "google_compute_subnetwork" "public_subnet" {
   region        = "${var.region}"
   network       = "${google_compute_network.vpc_network.self_link}"
   ip_cidr_range = "${var.public_subnet}"
+}
+resource "google_compute_address" "static" {
+  name = "${var.cluster_name}-static-ip-${random_string.random_name_post.result}"
 }
 ### Public VPC Firewall Policy ###
 #Default direction is ingress
@@ -217,6 +220,7 @@ resource "google_compute_region_autoscaler" "default" {
 
 # No Capital Letters allowed in the bucket name
 resource "google_storage_bucket" "bucket" {
+
   name = "fortigate-autoscale-${random_string.random_name_post.result}"
 }
 
@@ -230,7 +234,7 @@ resource "google_storage_bucket_object" "baseconfig" {
   name   = "baseconfig"
   bucket = "${google_storage_bucket.bucket.name}"
   source = "./assets/configset/baseconfig.rendered"
-  depends_on = ["data.template_file.setup_secondary_ip"]
+  depends_on = ["local_file.setup_secondary_ip_render"]
 }
 data "google_iam_policy" "editor" {
   binding {
@@ -267,6 +271,7 @@ resource "google_cloudfunctions_function" "function" {
 
   environment_variables = {
       PROJECT_ID                 = "${var.project}" #Used by Bucket
+      REGION                     = "${var.region}"
       FIRESTORE_DATABASE         = "${var.cluster_name}-fortigateautoscale-${random_string.random_name_post.result}",
       ASSET_STORAGE_NAME         = "${google_storage_bucket.bucket.name}",
       ASSET_STORAGE_KEY_PREFIX   = "empty",
@@ -300,6 +305,8 @@ resource "google_cloudfunctions_function" "function" {
       HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",
       HEART_BEAT_DELAY_ALLOWANCE = "${var.HEART_BEAT_DELAY_ALLOWANCE}",
       FORTIGATE_AUTOSCALE_VPC_ID = "empty",
+      ELASTIC_IP_NAME            = google_compute_address.static.name,
+
   }
 }
 
@@ -314,6 +321,7 @@ data "template_file" "setup_secondary_ip" {
 resource "local_file" "setup_secondary_ip_render" {
   content  = "${data.template_file.setup_secondary_ip.rendered}"
   filename = "${path.module}/assets/configset/baseconfig.rendered"
+  depends_on = ["data.template_file.setup_secondary_ip"]
 }
 resource "google_compute_forwarding_rule" "default" {
   name   = "${var.cluster_name}-loadbalancer-rule-${random_string.random_name_post.result}"
@@ -354,6 +362,9 @@ resource "google_compute_forwarding_rule" "internal_load_balancer" {
   network               = "${google_compute_network.protected_vpc_network.self_link}"
   subnetwork            = "${google_compute_subnetwork.protected_subnet.self_link}"
 }
+resource "google_compute_address" "master_external_address" {
+  name = "${var.cluster_name}-external-address-${random_string.random_name_post.result}"
+}
 
 resource "google_compute_region_backend_service" "internal_load_balancer_backend" {
   name          = "${var.cluster_name}-internal-slb-backend-${random_string.random_name_post.result}"
@@ -386,4 +397,10 @@ output "Trigger_URL" {
  }
 output "Note" {
   value = "The FireStore Database must be deleted separately"
+}
+output "Primary_Static_Address" {
+  value = "${google_compute_address.static.address}"
+}
+output "Primary_static_address_name" {
+  value = "${google_compute_address.static.name}"
 }
