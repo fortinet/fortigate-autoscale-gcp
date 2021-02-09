@@ -11,9 +11,9 @@
     "package.json"
   ],
   "dependencies": {
-    "@google-cloud/compute": "^1.1.2",
-    "@google-cloud/firestore": "^2.2.6",
-    "@google-cloud/storage": "^3.1.0",
+    "@google-cloud/compute": "^2.4.1",
+    "@google-cloud/firestore": "^4.8.1",
+    "@google-cloud/storage": "^5.7.0",
     "fortigate-autoscale-core": "github:fortinet/autoscale-core#3.0.0",
     "tslint": "^5.18.0",
     "typescript": "^3.7.3",
@@ -21,14 +21,14 @@
     "xml2js": "^0.4.19"
   },
   "devDependencies": {
-    "axios": "^0.19.0",
     "@types/chai": "^4.2.7",
     "@types/mocha": "^5.2.7",
+    "axios": "^0.19.0",
     "chai": "^4.2.0",
     "eslint": "^5.4.0",
     "eslint-plugin-mocha": "^5.2.0",
     "ftnt-devops-ci": "github:guardhao104/ftnt-devops-ci",
-    "mocha": "^5.2.0",
+    "mocha": "^8.2.1",
     "nyc": "^14.1.1"
   },
   "bundledDependencies": [
