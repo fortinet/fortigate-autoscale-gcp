@@ -174,6 +174,7 @@ resource "google_compute_health_check" "autohealing" {
 
    https_health_check {
      port         = "8443"
+     request_path="/login?redir=%2Fng%2F"
    }
  }
 
