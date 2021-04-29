@@ -22,7 +22,7 @@ const {
     } = process.env,
     SCRIPT_EXECUTION_TIME_CHECKPOINT = Date.now(),
     ELASTIC_IP_NIC = 'nic0', // GCP will only use nic0 at the moment. May change in the future.
-    ATTACH_EIP_TIME_LIMIT = 45000
+    ATTACH_EIP_TIME_LIMIT = 45000;
 
 namespace GCPPlatform {
     export interface Filter {
@@ -56,8 +56,8 @@ namespace GCPPlatform {
     }
     export interface DeleteRequest {
         data: Data;
-      }
-      export interface Data {
+    }
+    export interface Data {
         id: string;
         name: string;
         zone: string;
@@ -71,7 +71,7 @@ namespace GCPPlatform {
         startTime?: string;
         selfLink: string;
         kind?: string;
-      }
+    }
 }
 interface GCPVirtualMachineDescriptor extends AutoScaleCore.VirtualMachineLike, GCPPlatform.Instance {
     InstanceId: string;
@@ -405,7 +405,7 @@ export class GCP extends CloudPlatform<
         );
 
         // Google's auth client should be able to determine whether you are running locally, or in a cloud function.
-        // We use it here since we need to use their api, no the Node library to change addressconfigs.
+        // We use it here since we need to use their api, not the Node library to change addressconfigs.
         const auth = new GoogleAuth({
             scopes: 'https://www.googleapis.com/auth/cloud-platform'
         });
@@ -432,32 +432,34 @@ export class GCP extends CloudPlatform<
             // Troubleshooting data:
             console.log(`Delete EIP request ${JSON.stringify(deleteReq.data)}`);
             // If the request has been queued check the VM for the current accessConfig
-            if(deleteReq.data.status !== 'SUCCEEDED'){
-                console.warn(`Delete has queued. Waiting for it to finish before adding Static IP`)
+            if (deleteReq.data.status !== 'SUCCEEDED') {
+                console.warn(`Delete has queued. Waiting for it to finish before adding Static IP`);
                 let running = true;
                 let startTime = Date.now();
-                const attachEIPTimeLimit = ATTACH_EIP_TIME_LIMIT // Default 45 seconds max.
-                while(running === true && startTime + attachEIPTimeLimit > Date.now()){
-                    const getInstanceInfo = await this.getInstanceInfo(instanceId)
-                        // Check if there is an access config
-                        // If there isn't then we are done running and can continue
-                        if(!getInstanceInfo.networkInterfaces[0].accessConfigs){
-                            running = false;
-                        }
-                        else{
-                            console.log(`Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${Date.now() - startTime}`)
-                            // sleep for 2 seconds.
-                           await sleep(2000);
-                        }
-
+                const attachEIPTimeLimit = ATTACH_EIP_TIME_LIMIT; // Default 45 seconds max.
+                while (running === true && startTime + attachEIPTimeLimit > Date.now()) {
+                    const getInstanceInfo = await this.getInstanceInfo(instanceId);
+                    // Check if there is an access config
+                    // If there isn't then we are done running and can continue
+                    if (!getInstanceInfo.networkInterfaces[0].accessConfigs) {
+                        running = false;
+                    } else {
+                        console.log(
+                            `Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${
+                                Date.now() - startTime
+                            }`
+                        );
+                        // sleep for 2 seconds.
+                        await sleep(2000);
                     }
                 }
-
+            }
         } catch (err) {
             console.log(`Error in delete request ${err}`);
         }
         // Add the EIP to the new primary.
         try {
+            console.log('Attaching EIP to new Primary.');
             const addAddressReq = await client.request({
                 method: 'POST',
                 url: addAddressConfigURL,
@@ -472,7 +474,27 @@ export class GCP extends CloudPlatform<
                     kind: getAddressReq.data.kind // 'compute#accessConfig'
                 }
             });
+            let running = true;
+            let attachEIPTimeLimit = 45;
             console.log(addAddressReq.data);
+            let startTime = Date.now();
+            while (running === true && startTime + attachEIPTimeLimit > Date.now()) {
+                console.log('Looking for new EIP attachment');
+                const getInstanceInfo = await this.getInstanceInfo(instanceId);
+                // Check if there is an access config
+                // If there isn't then we are done running and can continue
+                if (getInstanceInfo.networkInterfaces[0].accessConfigs) {
+                    running = false;
+                } else {
+                    console.log(
+                        `Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${
+                            Date.now() - startTime
+                        }`
+                    );
+                    // sleep for 2 seconds.
+                    await sleep(2000);
+                }
+            }
         } catch (err) {
             console.log(`Error in attaching EIP ${err}`);
         }
@@ -506,16 +528,13 @@ export class GCP extends CloudPlatform<
         let getDoc;
         try {
             getDoc = await document.get();
-        }
-      catch (err) {
+        } catch (err) {
             console.log(`Error in getting Primary record ${err}`);
         }
-        if (
-            getDoc?._fieldsProto?.masterRecord?.mapValue?.fields?.InstanceId
-        ) {
+        if (getDoc?._fieldsProto?.masterRecord?.mapValue?.fields?.InstanceId) {
             const primaryInstanceId = getDoc._fieldsProto.masterRecord.mapValue.fields.InstanceId.stringValue;
             // Includes all info needed to change the EIP, but we really just need the zone.
-            const resourceInfo = await this.getInstanceInfo(primaryInstanceId)
+            const resourceInfo = await this.getInstanceInfo(primaryInstanceId);
             console.log(`Primary Election ${primaryInstanceId}, Zone: ${this.gcpSplitURL(resourceInfo.zone)}`);
             console.log(`Attaching static address to Primary Instance`);
             // Grab the zone from the GCP url and send to attachEIP
@@ -527,8 +546,6 @@ export class GCP extends CloudPlatform<
             await document.update({
                 ['masterRecord.' + 'VoteState']: 'done'
             });
-
-
         } catch (err) {
             console.log(`Error in finializing Primary record in election could not update Primary record. ${err}`);
         }
@@ -1057,7 +1074,7 @@ export class GCPAutoScaleHandler extends AutoscaleHandler<
     }
 }
 
-exports.main = async function(req, res, callback) {
+exports.main = async function (req, res, callback) {
     if (FIRESTORE_DATABASE && ASSET_STORAGE_NAME && FORTIGATE_PSK_SECRET && TRIGGER_URL && PROJECT_ID) {
         let context;
         const logger = new AutoScaleCore.Functions.DefaultLogger(console);
