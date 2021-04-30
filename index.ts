@@ -616,9 +616,9 @@ export class GCP extends CloudPlatform<
                     // TODO: look into additional values of the VM types.
                     var vmReturn: any = {
                         instanceId: vmData.metadata.id,
-                        PrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
-                        primaryPrivateIpAddress: vmData.metadata.networkInterfaces[0].networkIP,
-                        SubnetId: vmData.metadata.networkInterfaces[0].subnetwork,
+                        PrivateIpAddress: vmData.metadata.networkInterfaces[2].networkIP,
+                        primaryPrivateIpAddress: vmData.metadata.networkInterfaces[2].networkIP,
+                        SubnetId: vmData.metadata.networkInterfaces[2].subnetwork,
                         virtualNetworkId: 'empty',
                         zone: this.gcpSplitURL(vmData.metadata.zone)
                     };
@@ -1081,11 +1081,21 @@ exports.main = async function (req, res, callback) {
         const RuntimeAgent: GCPRuntimeAgent = new GCPRuntimeAgent(req, context, logger, callback);
         const platform: GCP = new GCP(RuntimeAgent);
         const handler = new GCPAutoScaleHandler(platform);
+        // HOTFIX for sync issue. Now always return PrimaryIp. Might be a good idea to always do this.
+        const getPrimaryRecord = await platform.getMasterRecord();
         console.log('Calling Handler');
         callback = (err, data) => {
-            console.log('Response', data.body);
-            res.status(200).send(data.body);
-            res.end();
+            //Primary record exists and there is a null/no body returned from core. Then return primary-ip from database.
+            if (getPrimaryRecord && !data.body) {
+                console.log('Response', { 'master-ip': getPrimaryRecord.ip });
+                res.status(200).send({ 'master-ip': getPrimaryRecord.ip });
+                res.end();
+            } else {
+                // return bootstrap or initial primary-ip
+                console.log('Response', data.body);
+                res.status(200).send(data.body);
+                res.end();
+            }
         };
         return await handler.handle(req, context, callback);
     } else {

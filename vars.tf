@@ -26,7 +26,7 @@ data "google_compute_zones" "get_zones" {
 # FortiGate Image
 variable "fortigate_image" {
   type = "string"
-  default = "projects/fortigcp-project-001/global/images/fortinet-fgt-644-20201217-001-w-license"    #Default 6.2.3 PAYG
+  default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-700-20210407-001-w-license"    #Default 6.4.5 PAYG
 }
 #Default
 variable "instance" {
@@ -79,6 +79,10 @@ variable "protected_subnet" {
 variable "public_managment_subnet" {
   type    = "string"
   default = "172.16.16.0/24"
+}
+variable "sync_subnet" {
+  type    = "string"
+  default = "172.16.24.0/24"
 }
 variable "firewall_allowed_range" {
   type = "string"
