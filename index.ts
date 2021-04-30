@@ -475,7 +475,7 @@ export class GCP extends CloudPlatform<
                 }
             });
             let running = true;
-            let attachEIPTimeLimit = 45;
+            let attachEIPTimeLimit = 45; // Default 45 seconds max.
             console.log(addAddressReq.data);
             let startTime = Date.now();
             while (running === true && startTime + attachEIPTimeLimit > Date.now()) {
@@ -1081,7 +1081,7 @@ exports.main = async function (req, res, callback) {
         const RuntimeAgent: GCPRuntimeAgent = new GCPRuntimeAgent(req, context, logger, callback);
         const platform: GCP = new GCP(RuntimeAgent);
         const handler = new GCPAutoScaleHandler(platform);
-        // HOTFIX for sync issue. Now always return PrimaryIp. Might be a good idea to always do this.
+        // HOTFIX for sync issue( 0711303). Now always return PrimaryIp. Might be a good idea to always do this.
         const getPrimaryRecord = await platform.getMasterRecord();
         console.log('Calling Handler');
         callback = (err, data) => {
