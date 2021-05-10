@@ -101,6 +101,33 @@ resource "google_compute_firewall" "protected_firewall" {
 
   source_ranges = ["${var.protected_firewall_allowed_range}"]
 }
+
+ ### SYNC vpc ###
+resource "google_compute_network" "sync_vpc" {
+  name                    = "${var.cluster_name}-sync-vpc-${random_string.random_name_post.result}"
+  auto_create_subnetworks = false
+}
+resource "google_compute_subnetwork" "sync_subnet" {
+  name          = "${var.cluster_name}-sync-subnet-${random_string.random_name_post.result}"
+  region        = "${var.region}"
+  network       = "${google_compute_network.sync_vpc.self_link}"
+  ip_cidr_range =  var.sync_subnet
+
+}
+### sync vpc policy ###
+resource "google_compute_firewall" "sync_firewall" {
+  name    = "${var.cluster_name}-sync-vpc-firewall-${random_string.random_name_post.result}"
+  network = "${google_compute_network.sync_vpc.name}"
+  priority = "100"
+  allow {
+    protocol = "all"
+  }
+
+  source_ranges = ["${var.protected_firewall_allowed_range}"]
+}
+
+
+
 ### Cloud Nat ###
 # Allows for egress traffic on Protected Subnet
 resource "google_compute_router_nat" "cloud_nat" {
@@ -154,6 +181,10 @@ resource "google_compute_instance_template" "default" {
    # Protected instances port
       network_interface {
      subnetwork = "${google_compute_subnetwork.protected_subnet.self_link}"
+   }
+      # Port3 Sync interface.
+      network_interface {
+     subnetwork = "${google_compute_subnetwork.sync_subnet.self_link}"
    }
   # Callback url and ssh key
   metadata = {
@@ -300,7 +331,7 @@ resource "google_cloudfunctions_function" "function" {
       ENABLE_SECOND_NIC          = "false",
       ENABLE_VM_INFO_CACHE       = "false",
       FORTIGATE_ADMIN_PORT       = "${var.FORTIGATE_ADMIN_PORT}",
-      FORTIGATE_SYNC_INTERFACE   = "port1",
+      FORTIGATE_SYNC_INTERFACE   = "port3",
        #TODO: change value to PRIMARY once core logic is changed.
       MASTER_ELECTION_NO_WAIT    = "true",
       HEARTBEAT_INTERVAL         = "${var.HEARTBEAT_INTERVAL}",

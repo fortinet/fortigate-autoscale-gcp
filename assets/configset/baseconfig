@@ -18,6 +18,13 @@ config system interface
         set type physical
         set allowaccess ping https ssh fgfm
     next
+        edit "port3"
+        set vdom "root"
+        set defaultgw enable
+        set mode dhcp
+        set type physical
+        set allowaccess ping https ssh fgfm
+    next
     edit "loopback"
         set vdom "root"
         set ip 192.168.199.1 255.255.255.255

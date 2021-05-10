@@ -80,6 +80,10 @@ variable "public_managment_subnet" {
   type    = "string"
   default = "172.16.16.0/24"
 }
+variable "sync_subnet" {
+  type    = "string"
+  default = "172.16.24.0/24"
+}
 variable "firewall_allowed_range" {
   type = "string"
   default = "0.0.0.0/0"
