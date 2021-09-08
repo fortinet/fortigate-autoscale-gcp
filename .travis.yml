@@ -14,4 +14,3 @@ deploy:
     on:
         repo: fortinet/fortigate-autoscale-gcp
         tags: true
-        all_branches: main
