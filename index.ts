@@ -445,9 +445,8 @@ export class GCP extends CloudPlatform<
                         running = false;
                     } else {
                         console.log(
-                            `Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${
-                                Date.now() - startTime
-                            }`
+                            `Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${Date.now() -
+                                startTime}`
                         );
                         // sleep for 2 seconds.
                         await sleep(2000);
@@ -455,7 +454,7 @@ export class GCP extends CloudPlatform<
                 }
             }
         } catch (err) {
-            console.log(`Error in delete request ${err}`);
+            console.error(`Error in delete request ${err}`);
         }
         // Add the EIP to the new primary.
         try {
@@ -487,16 +486,15 @@ export class GCP extends CloudPlatform<
                     running = false;
                 } else {
                     console.log(
-                        `Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${
-                            Date.now() - startTime
-                        }`
+                        `Waiting 2 seconds before Calling getInstanceInfo again. Time waited (Milliseconds) ${Date.now() -
+                            startTime}`
                     );
                     // sleep for 2 seconds.
                     await sleep(2000);
                 }
             }
         } catch (err) {
-            console.log(`Error in attaching EIP ${err}`);
+            console.error(`Error in attaching EIP ${err}`);
         }
     }
     public async getInstanceInfo(instanceId) {
@@ -513,7 +511,7 @@ export class GCP extends CloudPlatform<
                 }
             }
         } catch (err) {
-            console.log(err);
+            console.error(`Error Fetching VM's from GCP. Error: ${err}`);
             throw err;
         }
     }
@@ -529,7 +527,7 @@ export class GCP extends CloudPlatform<
         try {
             getDoc = await document.get();
         } catch (err) {
-            console.log(`Error in getting Primary record ${err}`);
+            console.error(`Error in getting Primary record ${err}`);
         }
         if (getDoc?._fieldsProto?.masterRecord?.mapValue?.fields?.InstanceId) {
             const primaryInstanceId = getDoc._fieldsProto.masterRecord.mapValue.fields.InstanceId.stringValue;
@@ -547,7 +545,7 @@ export class GCP extends CloudPlatform<
                 ['masterRecord.' + 'VoteState']: 'done'
             });
         } catch (err) {
-            console.log(`Error in finializing Primary record in election could not update Primary record. ${err}`);
+            console.error(`Error in finializing Primary record in election could not update Primary record. ${err}`);
         }
         return true;
     }
@@ -571,7 +569,7 @@ export class GCP extends CloudPlatform<
                 }
             });
         } catch (err) {
-            console.log(`Error in Updating Setting Table ${err}`);
+            console.error(`Error in Updating Setting Table ${err}`);
         }
 
         return true;
@@ -626,7 +624,7 @@ export class GCP extends CloudPlatform<
                 }
             }
         } catch (err) {
-            console.log(err);
+            console.error(`Error Fetching VM's from GCP. Error ${err}`);
             throw err;
         }
         return null;
@@ -1074,7 +1072,7 @@ export class GCPAutoScaleHandler extends AutoscaleHandler<
     }
 }
 
-exports.main = async function (req, res, callback) {
+exports.main = async function(req, res, callback) {
     if (FIRESTORE_DATABASE && ASSET_STORAGE_NAME && FORTIGATE_PSK_SECRET && TRIGGER_URL && PROJECT_ID) {
         let context;
         const logger = new AutoScaleCore.Functions.DefaultLogger(console);
