@@ -1,23 +1,22 @@
 variable "project" {
-  type    = "string"
+  type    = string
   default = ""
 }
 variable "service_account" {
-  type = "string"
+  type    = string
   default = ""
 }
-
 variable "region" {
-  type    = "string"
+  type    = string
   default = "us-central1" #Default Region
 }
-variable "zone"{
-  type = "string"
+variable "zone" {
+  type    = string
   default = "us-central1-c"
 }
 
-variable "auth_key"{
-  type = "string"
+variable "auth_key" {
+  type    = string
   default = "account.json"
 }
 # Zones to use with Instance Group
@@ -25,73 +24,74 @@ data "google_compute_zones" "get_zones" {
 }
 # FortiGate Image
 variable "fortigate_image" {
-  type = "string"
-  default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-701-20210721-001-w-license" #Default 7.0.1 PAYG
+  type    = string
+  # default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-701-20210721-001-w-license" #Default 7.0.1 PAYG
+  default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-702-20211021-001-w-license" #Default 7.0.2 PAYG
 }
 #Default
 variable "instance" {
-  type    = "string"
+  type    = string
   default = "n1-standard-4"
 }
 #Must be lower-case for VPC
 variable "cluster_name" {
-  type    = "string"
+  type    = string
   default = "fortigateautoscale"
 }
 #Must be all lower case
 variable "bucket_name" {
-  type    = "string"
+  type    = string
   default = "fortigateautoscale"
 }
 # Nodejs Version
-variable "nodejs_version"{
-  type  = "string"
+variable "nodejs_version" {
+  type    = string
   default = "nodejs10"
 }
 #Source zip to be uploaded to Compute Function
 variable "source_code_location" {
-  type    = "string"
+  type    = string
   default = "./dist/gcp.zip"
 }
 variable "source_code_name" {
-  type    = "string"
+  type    = string
   default = "gcp.zip"
 }
 # Upload a Local ssh key to the FortiGates
 variable "public_key_path" {
-  type    = "string"
+  type    = string
   default = ""
 }
 
 #### Network Settings ####
 variable "vpc_cidr" {
-  type    = "string"
+  type    = string
   default = "172.16.0.0/16"
 }
 variable "public_subnet" {
-  type    = "string"
+  type    = string
   default = "172.16.0.0/24"
 }
 variable "protected_subnet" {
-  type    = "string"
+  type    = string
   default = "172.16.8.0/24"
 }
 variable "public_managment_subnet" {
-  type    = "string"
+  type    = string
   default = "172.16.16.0/24"
 }
 variable "sync_subnet" {
-  type    = "string"
+  type    = string
   default = "172.16.24.0/24"
 }
 variable "firewall_allowed_range" {
-  type = "string"
+  type    = string
   default = "0.0.0.0/0"
 }
 
 # Internal Protected VPC
 variable "protected_firewall_allowed_range" {
-  type = "string"
+  type    = string
   default = "0.0.0.0/0"
 }
 ####  AutoScaling Configuration #####
