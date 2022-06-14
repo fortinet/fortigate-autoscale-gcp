@@ -20,6 +20,9 @@ resource "google_cloudfunctions_function" "function" {
   trigger_http          = true
   timeout               = var.SCRIPT_TIMEOUT
   entry_point           = "main"
+  timeouts {
+    create = "20m"
+  }
 
   environment_variables = {
     PROJECT_ID               = "${var.project}" #Used by Bucket
