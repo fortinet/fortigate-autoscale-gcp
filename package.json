@@ -1,47 +1,46 @@
 {
-  "name": "fortigate-autoscale-gcp",
-  "version": "1.0.0",
-  "description": "FortiGate Autoscale Google Cloud Platform",
-  "main": "index.js",
-  "directories": {
-    "test": "tests"
-  },
-  "files_to_deploy": [
-    "*.js",
-    "package.json"
-  ],
-  "dependencies": {
-    "@google-cloud/compute": "^2.4.1",
-    "@google-cloud/firestore": "^4.8.1",
-    "@google-cloud/storage": "^5.7.0",
-    "fortigate-autoscale-core": "github:fortinet/autoscale-core#3.0.0",
-    "tslint": "^5.18.0",
-    "typescript": "^3.7.3",
-    "uuid": "^3.3.2",
-    "xml2js": "^0.4.19"
-  },
-  "devDependencies": {
-    "@types/chai": "^4.2.7",
-    "@types/mocha": "^5.2.7",
-    "axios": "^0.21.1",
-    "chai": "^4.2.0",
-    "eslint": "^5.4.0",
-    "eslint-plugin-mocha": "^5.2.0",
-    "ftnt-devops-ci": "github:guardhao104/ftnt-devops-ci",
-    "mocha": "^8.2.1",
-    "nyc": "^14.1.1"
-  },
-  "bundledDependencies": [
-    "fortigate-autoscale-core"
-  ],
-  "scripts": {
-    "setup": "mkdir dist && npx tsc && cp cloud-function-package.json ./dist/package.json && cd ./dist && cp -r node_modules/fortigate-autoscale-core fortigate-autoscale-core && zip -r  gcp.zip index.js package.json  fortigate-autoscale-core && cd ..",
-    "test": "nyc mocha --recursive './test/mocha/*.js'"
-  },
-  "author": "fortinet",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/fortinet/fortigate-autoscale-gcp"
-  }
+    "name": "fortigate-autoscale-gcp",
+    "version": "1.0.0",
+    "description": "FortiGate Autoscale Google Cloud Platform",
+    "main": "index.js",
+    "directories": {
+        "test": "tests"
+    },
+    "files_to_deploy": [
+        "*.js",
+        "package.json"
+    ],
+    "dependencies": {
+        "@google-cloud/compute": "^2.4.1",
+        "@google-cloud/firestore": "^4.8.1",
+        "@google-cloud/storage": "^5.7.0",
+        "fortigate-autoscale-core": "github:fortinet/autoscale-core#3.0.0",
+        "tslint": "^5.18.0",
+        "typescript": "^3.7.3",
+        "uuid": "^3.3.2",
+        "xml2js": "^0.4.19"
+    },
+    "devDependencies": {
+        "@types/chai": "^4.2.7",
+        "@types/mocha": "^5.2.7",
+        "axios": "^0.21.1",
+        "chai": "^4.2.0",
+        "eslint": "^5.4.0",
+        "eslint-plugin-mocha": "^5.2.0",
+        "mocha": "^8.2.1",
+        "nyc": "^14.1.1"
+    },
+    "bundledDependencies": [
+        "fortigate-autoscale-core"
+    ],
+    "scripts": {
+        "setup": "mkdir dist && npx tsc && cp cloud-function-package.json ./dist/package.json && cd ./dist && cp -r node_modules/fortigate-autoscale-core fortigate-autoscale-core && zip -r  gcp.zip index.js package.json  fortigate-autoscale-core && cd ..",
+        "test": "nyc mocha --recursive './test/mocha/*.js'"
+    },
+    "author": "fortinet",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/fortinet/fortigate-autoscale-gcp"
+    }
 }
