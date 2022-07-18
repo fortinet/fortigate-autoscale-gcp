@@ -25,8 +25,7 @@ data "google_compute_zones" "get_zones" {
 # FortiGate Image
 variable "fortigate_image" {
   type    = string
-  # default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-701-20210721-001-w-license" #Default 7.0.1 PAYG
-  default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-702-20211021-001-w-license" #Default 7.0.2 PAYG
+  default = "projects/fortigcp-project-001/global/images/fortinet-fgtondemand-720-20220622-001-w-license" #Default 7.2.0 PAYG Image
 }
 #Default
 variable "instance" {
