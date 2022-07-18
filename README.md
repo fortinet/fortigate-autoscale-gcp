@@ -10,20 +10,21 @@ For autoscale on **Amazon AWS** and **Microsoft Azure** see the [fortigate-autos
 
 This project supports autoscale for the cloud platform listed below.
 
-- Google Cloud Platform (GCP)
+-   Google Cloud Platform (GCP)
 
 ## Deployment
 
 The deployment Guide is available from the Fortinet Document Library:
 
-- [ FortiGate / FortiOS Deploying Auto Scaling on GCP](https://docs.fortinet.com/vm/gc/fortigate/6.2/gcp-cookbook/6.2.0/365012/deploying-auto-scaling-on-gcp)
+-   [ FortiGate / FortiOS Deploying Auto Scaling on GCP](https://docs.fortinet.com/document/fortigate-public-cloud/7.0.0/gcp-administration-guide/365012/deploying-auto-scaling-on-gcp)
 
 ## Deployment Packages
 
 To generate local deployment packages:
 
 1. Clone this project.
-2. Run `npm run setup` at the project root directory.
+2. Run `npm install`.
+3. Run `npm run setup` at the project root directory.
 
 | File Name         | Description                                                       |
 | ----------------- | ----------------------------------------------------------------- |
