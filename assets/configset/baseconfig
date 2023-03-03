@@ -10,6 +10,7 @@ config system interface
         set mode dhcp
         set type physical
         set allowaccess ping https ssh fgfm
+        set dhcp-classless-route-addition enable
     next
     edit "port2"
         set vdom "root"
@@ -17,6 +18,7 @@ config system interface
         set mode dhcp
         set type physical
         set allowaccess ping https ssh fgfm
+        set dhcp-classless-route-addition enable
     next
         edit "port3"
         set vdom "root"
@@ -24,6 +26,7 @@ config system interface
         set mode dhcp
         set type physical
         set allowaccess ping https ssh fgfm
+        set dhcp-classless-route-addition enable
     next
     edit "loopback"
         set vdom "root"
