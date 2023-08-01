@@ -1085,8 +1085,8 @@ exports.main = async function(req, res, callback) {
         callback = (err, data) => {
             //Primary record exists and there is a null/no body returned from core. Then return primary-ip from database.
             if (getPrimaryRecord && !data.body) {
-                console.log('Response', { 'master-ip': getPrimaryRecord.ip });
-                res.status(200).send({ 'master-ip': getPrimaryRecord.ip });
+                console.log('Response', { 'primary-ip': getPrimaryRecord.ip });
+                res.status(200).send({ 'primary-ip': getPrimaryRecord.ip });
                 res.end();
             } else {
                 // return bootstrap or initial primary-ip
