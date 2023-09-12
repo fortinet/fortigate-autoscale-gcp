@@ -11,14 +11,13 @@
         "package.json"
     ],
     "dependencies": {
-        "@google-cloud/compute": "^2.4.1",
-        "@google-cloud/firestore": "^4.8.1",
-        "@google-cloud/storage": "^5.7.0",
+        "@google-cloud/compute": "^4.0.1",
+        "@google-cloud/firestore": "^6.7.0",
+        "@google-cloud/storage": "^7.1.0",
         "fortigate-autoscale-core": "github:fortinet/autoscale-core#3.0.0",
         "tslint": "^5.18.0",
         "typescript": "^3.7.3",
-        "uuid": "^3.3.2",
-        "xml2js": "^0.4.19"
+        "uuid": "^3.3.2"
     },
     "devDependencies": {
         "@types/chai": "^4.2.7",
@@ -42,5 +41,8 @@
     "repository": {
         "type": "git",
         "url": "git+https://github.com/fortinet/fortigate-autoscale-gcp"
-    }
+    },
+    "bundleDependencies": [
+        "fortigate-autoscale-core"
+    ]
 }
